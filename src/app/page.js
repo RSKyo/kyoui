@@ -1,5 +1,6 @@
+'use client';
 import Image from "next/image";
-import { Button } from 'antd'; 
+import { Button } from '@/';
 
 export default function Home() {
   return (
@@ -97,7 +98,8 @@ export default function Home() {
           Go to nextjs.org →
         </a> 
       </footer>*/}
-      <Button type="primary">点击我lalala</Button>
+      {/* <Button type="primary">点击我lalala</Button> */}
+      
     </div>
   );
 }

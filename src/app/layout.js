@@ -1,6 +1,5 @@
 import { Roboto, Noto_Sans_SC } from 'next/font/google';
 import "./globals.css";
-import 'antd/dist/reset.css';
 
 const roboto = Roboto({
   subsets: ['latin'],
