@@ -1,15 +1,16 @@
 import { Roboto, Noto_Sans_SC } from 'next/font/google';
 import "./globals.css";
+import { ThemeProvider } from '@/';
 
 const roboto = Roboto({
   subsets: ['latin'],
-  weight: ['400', '700'], 
+  weight: ['100', '400', '700'], 
   variable: "--font-roboto",
 });
 
 const notoSans = Noto_Sans_SC({
   subsets: ['latin'],
-  weight: ['400', '700'],
+  weight: ['100', '400', '700'],
   variable: "--font-noto-sans",
 });
 
@@ -22,8 +23,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className={`${roboto.variable} ${notoSans.variable} antialiased`}>
+      <body className={`${roboto.variable} antialiased`}>
         body begin
+        <ThemeProvider/>
         {children}
         body end
       </body>

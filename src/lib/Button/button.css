@@ -1,22 +1,77 @@
-.my-btn {
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
-    font-size: 1rem;
-    cursor: pointer;
-    border: none;
-    transition: all 0.2s;
-  }
-  
-  .my-btn.default {
-    background-color: #1890ff;
-    color: white;
-  }
-  
-  .my-btn.default:hover {
-    background-color: #40a9ff;
-  }
-  
-  .my-btn.default:disabled {
-    background-color: #d9d9d9;
-    cursor: not-allowed;
-  }
+.op1-button {
+  --btn-font-color: rgb(51, 59, 64);
+  --btn-color: 224, 219, 216;
+  --btn-highlight: 251, 250, 247;
+  --btn-shadow: 151, 144, 138;
+  --btn-size: 100px;
+  --o1: calc(var(--btn-size) * 5 / 100);
+  --o2: calc(var(--btn-size) * 8 / 100);
+
+  position: relative;
+  width: var(--btn-size);
+  height: var(--btn-size);
+  font-size: calc(var(--btn-size) * 48 / 100);
+  font-weight: 100;
+  color: var(--btn-font-color);
+  border-radius: calc(var(--btn-size) * 6 / 100);
+  /* 圆角，数值可调 */
+  box-shadow: inset 1.5px 1.5px 1px rgba(var(--btn-highlight), 0.8),
+    inset -1.5px -1.5px 1px rgba(var(--btn-shadow), 0.8);
+}
+
+.op1-button.sm {
+  --btn-size: 80px;
+}
+.op1-button.md {
+  --btn-size: 100px;
+}
+.op1-button.lg {
+  --btn-size: 150px;
+}
+
+.op1-button,
+.op1-button .op1-knob-bg,
+.op1-button .op1-knob-surface {
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  background-color: rgb(var(--btn-color));
+}
+.op1-knob-bg,
+.op1-knob-surface {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  margin: auto;
+  inset: 0; /* 水平垂直居中 */
+  border-radius: 50%;
+}
+
+.op1-knob-bg {
+  width: 86%;
+  height: 86%;
+}
+
+.op1-knob-surface {
+  width: 76%;
+  height: 76%;
+
+  box-shadow: inset 1px 1px 0.5px rgba(var(--btn-highlight), 0.3),
+    inset -1px -1px 0.5px rgba(var(--btn-shadow), 0.6),
+    inset 2px 2px 8px rgba(var(--btn-shadow), 0.1),
+    inset -2px -2px 8px rgba(var(--btn-highlight), 0.1),
+    1.5px 1.5px 2px rgba(var(--btn-highlight), 0.2),
+    var(--o1) var(--o1) var(--o1) rgba(var(--btn-shadow), 0.8),
+    var(--o2) var(--o2) var(--o2) rgba(var(--btn-shadow), 0.6),
+    calc(-1 * var(--o1)) calc(-1 * var(--o1)) var(--o1)
+      rgba(var(--btn-shadow), 0.2),
+    var(--o1) calc(-1 * var(--o1)) var(--o1) rgba(var(--btn-shadow), 0.2),
+    var(--o1) var(--o1) var(--o1) rgba(var(--btn-shadow), 0.2),
+    calc(-1 * var(--o1)) var(--o1) var(--o1) rgba(var(--btn-shadow), 0.2),
+    calc(-1 * var(--o2)) calc(-1 * var(--o2)) var(--o2)
+      rgba(var(--btn-highlight), 1),
+    var(--o2) calc(-1 * var(--o2)) var(--o2) rgba(var(--btn-highlight), 0.2),
+    var(--o2) var(--o2) var(--o2) rgba(var(--btn-highlight), 0.1),
+    calc(-1 * var(--o2)) var(--o2) var(--o2) rgba(var(--btn-highlight), 0.3);
+}
