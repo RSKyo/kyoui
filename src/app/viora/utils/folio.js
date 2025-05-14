@@ -1,5 +1,6 @@
-export function getFolio(canvas) {
+export function getFolio(canvas, handleAnimate) {
   if (!canvas) return null;
+  if (typeof handleAnimate !== "function") return null;
 
   const folio = {
     // canvas 基本信息
@@ -7,27 +8,37 @@ export function getFolio(canvas) {
     ctx: null,
     width: 0,
     height: 0,
+    viewWidth: 0,
+    viewHeight: 0,
     get center() {
       return {
         x: this.width / 2,
         y: this.height / 2,
-      }
+      };
     },
     animationFrameId: null,
+    animate: function (timestamp) {
+      if (!this.isRunning()) return;
+      const boundHandleAnimate = handleAnimate.bind(this);
+      boundHandleAnimate(this.startTime, this.getElapsed(timestamp));
+      const boundAnimate = this.animate.bind(this);
+      this.animationFrameId = requestAnimationFrame(boundAnimate);
+    },
     stat: "idle", // idle | running | paused | stopped
     startTime: null,
     pausedAt: null,
     totalPaused: 0,
+    data: null,
 
     init(ref) {
       this.canvas = ref;
       this.ctx = ref.getContext("2d");
-      this.resize();
       this.stat = "idle";
       this.animationFrameId = null;
       this.startTime = null;
       this.pausedAt = null;
       this.totalPaused = 0;
+      this.resize();
     },
 
     setSize(width, height) {
@@ -36,8 +47,8 @@ export function getFolio(canvas) {
       this.canvas.height = height * dpr;
       this.canvas.style.width = `${width}px`;
       this.canvas.style.height = `${height}px`;
-      this.width = width * dpr;
-      this.height = height * dpr;
+      this.width = width;
+      this.height = height;
       // 缩放上下文坐标系
       this.ctx.scale(dpr, dpr);
     },
@@ -64,7 +75,7 @@ export function getFolio(canvas) {
     isStopped() {
       return this.stat === "stopped";
     },
-    run(animate, prefn) {
+    run() {
       if (this.stat === "running") return;
       if (this.stat === "paused") {
         this.totalPaused += performance.now() - this.pausedAt;
@@ -73,33 +84,30 @@ export function getFolio(canvas) {
         this.startTime = performance.now();
         this.totalPaused = 0;
       }
-      if (typeof prefn === "function") prefn();
       this.stat = "running";
-      if (typeof animate === "function") {
-        const boundAnimate = animate.bind(this);
-        this.animationFrameId = requestAnimationFrame(boundAnimate);
-      }
+      const boundAnimate = this.animate.bind(this);
+      this.animationFrameId = requestAnimationFrame(boundAnimate);
     },
-    pause(afterfn) {
+    pause() {
       if (this.stat !== "running") return;
       this.stat = "paused";
       this.pausedAt = performance.now();
 
-      if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
-      if (typeof afterfn === "function") afterfn();
+      if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+      }
     },
     // 停止动画（并重置时间）
-    stop(afterfn) {
+    stop() {
       if (this.stat === "stopped" || this.stat === "idle") return;
 
       this.stat = "stopped";
       if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+      this.clear();
       this.animationFrameId = null;
       this.startTime = null;
       this.pausedAt = null;
       this.totalPaused = 0;
-
-      if (typeof afterfn === "function") afterfn();
     },
     reset() {
       this.stop();
