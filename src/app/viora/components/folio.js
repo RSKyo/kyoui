@@ -20,7 +20,7 @@ export function getFolio(canvas, handleAnimate) {
     animate: function (timestamp) {
       if (!this.isRunning()) return;
       const boundHandleAnimate = handleAnimate.bind(this);
-      boundHandleAnimate(this.startTime, this.getElapsed(timestamp));
+      boundHandleAnimate(this.getElapsed(timestamp));
       const boundAnimate = this.animate.bind(this);
       this.animationFrameId = requestAnimationFrame(boundAnimate);
     },
@@ -28,7 +28,7 @@ export function getFolio(canvas, handleAnimate) {
     startTime: null,
     pausedAt: null,
     totalPaused: 0,
-    data: null,
+    points: null,
 
     init(ref) {
       this.canvas = ref;
@@ -38,6 +38,7 @@ export function getFolio(canvas, handleAnimate) {
       this.startTime = null;
       this.pausedAt = null;
       this.totalPaused = 0;
+      this.points = null;
       this.resize();
     },
 
@@ -108,6 +109,7 @@ export function getFolio(canvas, handleAnimate) {
       this.startTime = null;
       this.pausedAt = null;
       this.totalPaused = 0;
+      this.points = null;
     },
     reset() {
       this.stop();
@@ -128,19 +130,29 @@ export function getFolio(canvas, handleAnimate) {
     clear() {
       this.ctx.clearRect(0, 0, this.width, this.height);
     },
-    setBackground(color = "0,0,0") {
-      const fillStyle = color.includes(",")
-        ? `rgba(${color}, ${alpha})`
-        : color;
+    setBackground(color = "rgb(255, 255, 255)", alpha = 1) {
+      const fillStyle = this.convertToRgba(color, alpha);
       this.ctx.fillStyle = fillStyle;
       this.ctx.fillRect(0, 0, this.width, this.height);
     },
-    drawCircle(x, y, radius = 5, color = "0,0,0", alpha = 1) {
+
+    convertToRgba(color, alpha) {
+      if (color.startsWith("rgb(")) {
+        return color.replace("rgb(", "rgba(").replace(")", `, ${alpha})`);
+      }
+      if (color.startsWith("#")) {
+        // 简单版本：只处理 #RRGGBB 格式
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+      return color; // fallback，可能是 rgba 已带透明度
+    },
+    drawCircle(x, y, radius = 5, color = "rgb(0,0,0)", alpha = 1) {
       this.ctx.beginPath();
       this.ctx.arc(x, y, radius, 0, Math.PI * 2);
-      const fillStyle = color.includes(",")
-        ? `rgba(${color}, ${alpha})`
-        : color;
+      const fillStyle = this.convertToRgba(color, alpha);
       this.ctx.fillStyle = fillStyle;
       this.ctx.fill();
     },
