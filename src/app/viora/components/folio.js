@@ -1,3 +1,8 @@
+import {
+  generateWaveData,
+  generateEasingData,
+} from "@/app/viora/components/rain";
+
 export function getFolio(canvas, handleAnimate) {
   if (!canvas) return null;
   if (typeof handleAnimate !== "function") return null;
@@ -20,15 +25,16 @@ export function getFolio(canvas, handleAnimate) {
     animate: function (timestamp) {
       if (!this.isRunning()) return;
       const boundHandleAnimate = handleAnimate.bind(this);
-      boundHandleAnimate(this.getElapsed(timestamp));
-      const boundAnimate = this.animate.bind(this);
-      this.animationFrameId = requestAnimationFrame(boundAnimate);
+      const rtn = boundHandleAnimate(this.getElapsed(timestamp));
+      if(rtn !== false) {
+        const boundAnimate = this.animate.bind(this);
+        this.animationFrameId = requestAnimationFrame(boundAnimate);
+      }
     },
     stat: "idle", // idle | running | paused | stopped
     startTime: null,
     pausedAt: null,
     totalPaused: 0,
-    points: null,
 
     init(ref) {
       this.canvas = ref;
@@ -155,6 +161,50 @@ export function getFolio(canvas, handleAnimate) {
       const fillStyle = this.convertToRgba(color, alpha);
       this.ctx.fillStyle = fillStyle;
       this.ctx.fill();
+    },
+
+    drawEasingCurve() {
+      const colors = [
+            "red",
+            "green",
+            "blue",
+            "orange",
+            "purple",
+            "brown",
+            "teal",
+            "pink",
+            "gray",
+          ];
+          const funcs = [
+            "easeInOutSine",
+            "easeInOutQuad",
+            "easeInCubic",
+            "easeOutCubic",
+            "easeInOutCubic",
+            "easeInExpo",
+            "easeOutExpo",
+            "easeInBack",
+            "easeOutBack",
+          ];
+          const easingData = [];
+          funcs.forEach(d=>{
+            easingData.push({ n: d, data: generateEasingData(100, d)});
+          });
+
+          easingData.forEach((d, i) => {
+            this.ctx.beginPath();
+            this.ctx.strokeStyle = colors[i];
+            d.data.forEach((d, j) => {
+              const x = d.progress * this.width;
+              const y = this.height / 4 + ((1 - d.y) * this.height) / 4;
+              console.log(`x:${x},y:${y}`);
+              if (j === 0) this.ctx.moveTo(x, y);
+              else this.ctx.lineTo(x, y);
+            });
+            this.ctx.stroke();
+            this.ctx.fillStyle = colors[i];
+            this.ctx.fillText(d.n, 10, 10 + i * 10);
+          });
     },
   };
 
