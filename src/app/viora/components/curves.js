@@ -128,3 +128,116 @@ export function generateEasingData(points = 100, type = "easeInOutSine") {
 
   return data;
 }
+
+export function drawWaveCurve() {
+      const colors = [
+            "red",
+            "blue",
+          ];
+          const funcs = [
+            "sin",
+            "cos",
+          ];
+          const waveData = [];
+          funcs.forEach(n=>{
+            waveData.push({ n: n, data: generateWaveData(1, 100, n)});
+          });
+
+          waveData.forEach((d, i) => {
+            this.ctx.beginPath();
+            this.ctx.strokeStyle = colors[i];
+            d.data.forEach((d, j) => {
+              const x = d.progress * this.width;
+              const y = this.height / 4 + ((1 - d.y) * this.height) / 4;
+              console.log( `x:${x},y:${y}`)
+              if (j === 0) this.ctx.moveTo(x, y);
+              else this.ctx.lineTo(x, y);
+            });
+            this.ctx.stroke();
+            this.ctx.fillStyle = colors[i];
+            this.ctx.fillText(d.n, 10, 10 + i * 10);
+          });
+    }
+
+    export function drawCurve(ctx, {
+  points,
+  color = "black",
+  lineWidth = 1,
+  label = "",
+  font = "12px sans-serif",
+  labelPosition = "start",
+  drawDot = false
+}) {
+  if (!ctx || !points || points.length === 0) return;
+
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+
+  points.forEach((pt, i) => {
+    const { x, y } = pt;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+
+  ctx.stroke();
+
+  if (drawDot) {
+    points.forEach(pt => {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    });
+  }
+
+  if (label) {
+    const labelPt = labelPosition === "end" ? points[points.length - 1] : points[0];
+    ctx.font = font;
+    ctx.fillStyle = color;
+    ctx.fillText(label, labelPt.x + 4, labelPt.y - 4);
+  }
+}
+
+    export function drawEasingCurve() {
+      const colors = [
+            "red",
+            "green",
+            "blue",
+            "orange",
+            "purple",
+            "brown",
+            "teal",
+            "pink",
+            "gray",
+          ];
+          const funcs = [
+            "easeInOutSine",
+            "easeInOutQuad",
+            "easeInCubic",
+            "easeOutCubic",
+            "easeInOutCubic",
+            "easeInExpo",
+            "easeOutExpo",
+            "easeInBack",
+            "easeOutBack",
+          ];
+          const easingData = [];
+          funcs.forEach(d=>{
+            easingData.push({ n: d, data: generateEasingData(100, d)});
+          });
+
+          easingData.forEach((d, i) => {
+            this.ctx.beginPath();
+            this.ctx.strokeStyle = colors[i];
+            d.data.forEach((d, j) => {
+              const x = d.progress * this.width;
+              const y = this.height / 4 + ((1 - d.y) * this.height) / 4;
+              if (j === 0) this.ctx.moveTo(x, y);
+              else this.ctx.lineTo(x, y);
+            });
+            this.ctx.stroke();
+            this.ctx.fillStyle = colors[i];
+            this.ctx.fillText(d.n, 10, 10 + i * 10);
+          });
+    }
