@@ -2,22 +2,23 @@
 import React from "react";
 import { useRef, useEffect, useState } from "react";
 import Playbar from "@/app/viora/components/playbar";
-import { getFolio } from "@/app/viora/components/folio";
+import { createFolio } from "@/app/viora/components/folio";
 import {
   generateWaveData,
   generateEasingData,
-} from "@/app/viora/components/rain";
+} from "@/app/viora/components/curves";
 
 export default function RainPage() {
   const canvasRef = useRef(null);
   const folioRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
 
-  function animate(elapsed) {
+  function handleRender(elapsed) {
     
+    this.drawWaveCurve();
     this.drawEasingCurve();
     return false;
-    
+
     //     // 过滤过期点
     //     this.points = this.points.filter((p) => elapsed - p.createAt < p.lifeTime);
     //     // 没有点则推出
@@ -42,19 +43,18 @@ export default function RainPage() {
     //     }
   }
 
-  function preRun() {
-    if (this.isIdle() || this.isStopped()) {
-      this.data = generateEasingData(100, "easeInOutSine");
-    }
+  function handleStart(folio) {
+    this.data = generateEasingData(100, "easeInOutSine");
+    folio.addDrawable("easeInOutSine",this.data,handleRender);
   }
 
   useEffect(() => {
     if (!canvasRef.current) return;
-    folioRef.current = getFolio(canvasRef.current, animate);
+    folioRef.current = createFolio(canvasRef.current, {onStart: handleStart});
     setIsReady(true);
 
     return () => {
-      folioRef.current.stop();
+      folioRef.current.stop(false);
     };
   }, []);
 
