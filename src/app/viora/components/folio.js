@@ -36,6 +36,7 @@ export function createFolio(
     onStop = null,
     onEnd = null,
     onResize = null,
+    debug = false,
   }
 ) {
   if (!canvas) throw new Error("canvas element is required.");
@@ -70,6 +71,9 @@ export function createFolio(
     handleEnd: null,
     handleResize: null,
 
+    // 调试
+    _debug: false,
+
     get center() {
       return {
         x: this.width / 2,
@@ -91,6 +95,7 @@ export function createFolio(
         onStop = null,
         onEnd = null,
         onResize = null,
+        debug = false,
       }
     ) {
       this.canvas = canvas;
@@ -106,12 +111,13 @@ export function createFolio(
       const h = height > 0 ? height : rect.height;
       this.setSize(w, h);
 
-      this.handleStart = onStart;
-      this.handleFrame = onFrame;
-      this.handleRepeat = onRepeat;
-      this.handleStop = onStop;
-      this.handleEnd = onEnd;
-      this.handleResize = onResize;
+      this.handleStart = typeof onStart === "function" ? onStart : null;
+      this.handleFrame = typeof onFrame === "function" ? onFrame : null;
+      this.handleRepeat = typeof onRepeat === "function" ? onRepeat : null;
+      this.handleStop = typeof onStop === "function" ? onStop : null;
+      this.handleEnd = typeof onEnd === "function" ? onEnd : null;
+      this.handleResize = typeof onResize === "function" ? onResize : null;
+      this._debug = debug;
     },
 
     /** 设置 canvas 大小并适配高分屏 */
@@ -130,7 +136,7 @@ export function createFolio(
     resize() {
       const rect = this.canvas.getBoundingClientRect();
       this.setSize(rect.width, rect.height);
-      if (typeof this.handleResize === "function") this.handleResize(this);
+      this.handleResize?.(this);
     },
 
     /** 判断当前是否空闲状态 */
@@ -156,25 +162,25 @@ export function createFolio(
     /** 启动动画主循环 */
     run() {
       if (this.isRunning()) return;
-      console.log("[folio] 动画开始运行");
+      this.logDebug("Animation started");
 
-      this._status = "running";
       if (this.isIdle() || this.isStopped()) {
         this._startTime = performance.now();
         this._totalPaused = 0;
-        if (typeof this.handleStart === "function") this.handleStart(this);
+        this.handleStart?.(this);
       }
       if (this.isPaused()) {
         this._totalPaused += performance.now() - this._pausedAt;
         this._pausedAt = null;
       }
+      this._status = "running";
       this._animationFrameId = requestAnimationFrame(this._boundAnimate);
     },
 
     /** 暂停动画 */
     pause() {
       if (!this.isRunning()) return;
-      console.log("[folio] 动画已暂停");
+      this.logDebug("Animation paused");
 
       this._status = "paused";
       this._pausedAt = performance.now();
@@ -184,10 +190,9 @@ export function createFolio(
     /** 停止动画并重置状态 */
     stop(manual = true) {
       if (this.isStopped() || this.isIdle()) return;
-      if (manual) console.log("[folio] 动画已停止");
+      if (manual) this.logDebug("Animation stopped");
 
-      if (manual && typeof this.handleStop === "function")
-        this.handleStop(this);
+      this.handleStop?.(this);
       this._status = "stopped";
       if (this._animationFrameId) cancelAnimationFrame(this._animationFrameId);
       this._animationFrameId = null;
@@ -201,22 +206,19 @@ export function createFolio(
     animate(timestamp) {
       if (!this.isRunning()) return;
       const elapsed = this.getElapsed(timestamp);
-
       if (
         this._duration > 0 &&
         elapsed >= (this._playCount + 1) * this._duration
       ) {
         this._playCount++;
-        console.log(`[folio] 动画已重复${this._playCount}次`);
+        this.logDebug(`Loop #${this._playCount}`);
         if (this._playCount >= this._repeat) {
-          console.log("[folio] 动画已结束");
-          if (typeof this.handleEnd === "function") {
-            this.handleEnd(this);
-          }
+          this.logDebug("Animation ended");
+          this.handleEnd?.(this);
           this.stop(false);
           return;
         } else {
-          if (typeof this.handleRepeat === "function") this.handleRepeat(this);
+          this.handleRepeat?.(this);
           return (this._animationFrameId = requestAnimationFrame(
             this._boundAnimate
           ));
@@ -224,18 +226,15 @@ export function createFolio(
       }
 
       this._updaters.forEach(({ id, data, updater }) => {
-        if (typeof updater === "function")
-          updater(elapsed, { id, data, folio: this });
+        updater(elapsed, { id, data, folio: this });
       });
 
       this.clear();
       this._renders.forEach(({ id, data, render, zIndex }) => {
-        if (typeof render === "function")
-          render(elapsed, { id, data, zIndex, folio: this });
+        render(elapsed, { id, data, zIndex, folio: this });
       });
 
-      if (typeof this.handleFrame === "function")
-        this.handleFrame(elapsed, this);
+      this.handleFrame?.(elapsed, this);
       this._animationFrameId = requestAnimationFrame(this._boundAnimate);
     },
 
@@ -248,14 +247,16 @@ export function createFolio(
     /** 添加图层（支持 updater 和 render） */
     addDrawable({ id, data, updater, render, zIndex = 0 }) {
       if (!id) id = this.generateId("drawable");
+      // 若已有相同 ID 的图层，发出警告，避免覆盖或误删
       if (this._renders.some((d) => d.id === id)) {
-        console.warn(`[folio] 重复 drawable ID: ${id}`);
+        this.logWarn(`重复 drawable ID: ${id}`);
       }
       if (typeof zIndex !== "number") zIndex = this._renders.length;
       if (typeof updater === "function")
         this._updaters.push({ id, data, updater });
       if (typeof render === "function")
         this._renders.push({ id, data, render, zIndex });
+      // 根据 zIndex 从小到大排序，确保绘制顺序正确
       this._renders.sort((a, b) => a.zIndex - b.zIndex);
     },
 
@@ -308,6 +309,14 @@ export function createFolio(
         ? crypto.randomUUID()
         : fallback();
     },
+
+    /** 内部调试输出方法 */
+    logWarn(...args) {
+      console.log("[folio]", ...args);
+    },
+    logDebug(...args) {
+      if (this._debug) console.log("[folio]", ...args);
+    },
   };
 
   folio.init(canvas, {
@@ -321,6 +330,7 @@ export function createFolio(
     onStop,
     onEnd,
     onResize,
+    debug,
   });
   return folio;
 }

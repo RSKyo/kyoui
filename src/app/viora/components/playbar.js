@@ -1,36 +1,17 @@
-export default function Playbar({ folio, onPreRun, onRun, onPause, onStop }) {
+export default function Playbar({folio}) {
   const handleRun = () => {
     if (!folio) return;
-    if (typeof onPreRun === "function") {
-      const boundOnPreRun = onPreRun.bind(folio);
-      boundOnPreRun();
-    }
-    if (typeof onRun === "function") {
-      const boundOnRun = onRun.bind(folio);
-      boundOnRun();
-    } else {
-      folio.run();
-    }
+    folio.run();
   };
 
   const handlePause = () => {
     if (!folio) return;
-    if (typeof onPause === "function") {
-      const boundOnPause = onPause.bind(folio);
-      boundOnPause();
-    } else {
-      folio.pause();
-    }
+    folio.pause();
   };
 
   const handleStop = () => {
     if (!folio) return;
-    if (typeof onStop === "function") {
-      const boundOnStop = onStop.bind(folio);
-      boundOnStop();
-    } else {
-      folio.stop();
-    }
+    folio.stop();
   };
 
   return (

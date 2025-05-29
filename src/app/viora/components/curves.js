@@ -129,6 +129,63 @@ export function generateEasingData(points = 100, type = "easeInOutSine") {
   return data;
 }
 
+
+export function sampleBezierData(P0, P1, P2, P3, segments, options = {}) {
+  const {
+    valueMax = 50,
+    valueJitter = 0.3,
+    intervalMs = 100,
+    intervalJitter = 0.2
+  } = options;
+
+  function bezierPoint(t) {
+    const x =
+      Math.pow(1 - t, 3) * P0.x +
+      3 * Math.pow(1 - t, 2) * t * P1.x +
+      3 * (1 - t) * Math.pow(t, 2) * P2.x +
+      Math.pow(t, 3) * P3.x;
+
+    const y =
+      Math.pow(1 - t, 3) * P0.y +
+      3 * Math.pow(1 - t, 2) * t * P1.y +
+      3 * (1 - t) * Math.pow(t, 2) * P2.y +
+      Math.pow(t, 3) * P3.y;
+
+    return { x, y };
+  }
+
+  const relativePoints = [];
+  let maxY = 1;
+
+  for (let i = 0; i < segments; i++) {
+    const t = i / (segments - 1);
+    const abs = bezierPoint(t);
+    const relX = Math.round(abs.x - P0.x);
+    const relY = Math.round(P0.y - abs.y);
+
+    maxY = Math.max(maxY, Math.abs(relY));
+
+    relativePoints.push({
+      progress: parseFloat(t.toFixed(5)),
+      x: relX,
+      y: relY
+    });
+  }
+
+  relativePoints.forEach((p, i) => {
+    const base = (p.y / maxY) * valueMax;
+    const jitterValue = base * valueJitter * (Math.random() * 2 - 1);
+    p.value = Math.round(base + jitterValue);
+
+    const timeBase = i * intervalMs;
+    const jitterTime = timeBase * intervalJitter * (Math.random() * 2 - 1);
+    p.time = Math.round(timeBase + jitterTime);
+  });
+
+  return relativePoints;
+}
+
+
 export function drawWaveCurve() {
       const colors = [
             "red",

@@ -6,6 +6,8 @@ import { createFolio } from "@/app/viora/components/folio";
 import {
   generateWaveData,
   generateEasingData,
+  drawWaveCurve,
+  drawEasingCurve,
 } from "@/app/viora/components/curves";
 
 export default function RainPage() {
@@ -13,11 +15,9 @@ export default function RainPage() {
   const folioRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
 
-  function handleRender(elapsed) {
-    
-    this.drawWaveCurve();
-    this.drawEasingCurve();
-    return false;
+  function handleRender(elapsed, { id, data, zIndex, folio }) {
+    // drawWaveCurve();
+    // drawEasingCurve();
 
     //     // 过滤过期点
     //     this.points = this.points.filter((p) => elapsed - p.createAt < p.lifeTime);
@@ -44,13 +44,13 @@ export default function RainPage() {
   }
 
   function handleStart(folio) {
-    this.data = generateEasingData(100, "easeInOutSine");
-    folio.addDrawable("easeInOutSine",this.data,handleRender);
+    const data = generateEasingData(100, "easeInOutSine");
+    folio.addDrawable({data:data,render: handleRender});
   }
 
   useEffect(() => {
     if (!canvasRef.current) return;
-    folioRef.current = createFolio(canvasRef.current, {onStart: handleStart});
+    folioRef.current = createFolio(canvasRef.current, {onStart: handleStart,debug: true});
     setIsReady(true);
 
     return () => {
@@ -61,7 +61,7 @@ export default function RainPage() {
   return (
     <>
       <canvas ref={canvasRef} className="w-[500px] h-[500px]"></canvas>
-      {isReady && <Playbar folio={folioRef.current} onPreRun={preRun} />}
+      {isReady && <Playbar folio={folioRef.current} />}
     </>
   );
 }
