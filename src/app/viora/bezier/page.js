@@ -1,74 +1,34 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-function getRelativeBezierPoints(P0, P1, P2, P3, segments, options = {}) {
-  const {
-    valueMax = 50,
-    valueJitter = 0.3,
-    intervalMs = 100,
-    intervalJitter = 0.2,
-    decimalPlaces = 5
-  } = options;
-
-  function bezierPoint(t) {
-    const x =
-      Math.pow(1 - t, 3) * P0.x +
-      3 * Math.pow(1 - t, 2) * t * P1.x +
-      3 * (1 - t) * Math.pow(t, 2) * P2.x +
-      Math.pow(t, 3) * P3.x;
-
-    const y =
-      Math.pow(1 - t, 3) * P0.y +
-      3 * Math.pow(1 - t, 2) * t * P1.y +
-      3 * (1 - t) * Math.pow(t, 2) * P2.y +
-      Math.pow(t, 3) * P3.y;
-
-    return { x, y };
-  }
-
-  const relativePoints = [];
-  let maxY = 1;
-
-  for (let i = 0; i < segments; i++) {
-    const t = i / (segments - 1);
-    const abs = bezierPoint(t);
-    const relX = parseFloat((abs.x - P0.x).toFixed(decimalPlaces));
-    const relY = parseFloat((P0.y - abs.y).toFixed(decimalPlaces));
-
-    maxY = Math.max(maxY, Math.abs(relY));
-
-    relativePoints.push({
-      progress: parseFloat(t.toFixed(decimalPlaces)),
-      x: relX,
-      y: relY
-    });
-  }
-
-  relativePoints.forEach((p, i) => {
-    const base = (p.y / maxY) * valueMax;
-    const jitterValue = base * valueJitter * (Math.random() * 2 - 1);
-    p.value = parseFloat((base + jitterValue).toFixed(decimalPlaces));
-
-    const timeBase = i * intervalMs;
-    const jitterTime = timeBase * intervalJitter * (Math.random() * 2 - 1);
-    p.time = Math.round(timeBase + jitterTime);
-  });
-
-  return relativePoints;
-}
+import { getMultiBezierPoints, mapPointsToCanvas } from "@/app/viora/components/curves";
 
 export default function Rain2() {
   const canvasRef = useRef(null);
   const [segments, setSegments] = useState(10);
   const [samplePoints, setSamplePoints] = useState([]);
-  const [points, setPoints] = useState([
-    { x: 100, y: 300 },
-    { x: 200, y: 100 },
-    { x: 400, y: 100 },
-    { x: 500, y: 300 }
-  ]);
-  const draggingPointRef = useRef(null);
+  const canvasWidth = 600;
+  const canvasHeight = 400;
+  const normalizedCurves = [
+    [
+      { x: 0, y: 0 },
+      { x: 0.4, y: 1.2 },
+      { x: 0.6, y: 1.2 },
+      { x: 1, y: 0 }
+    ],
+    [
+      { x: 1, y: 0 },
+      { x: 1.4, y: -1.2 },
+      { x: 1.6, y: -1.2 },
+      { x: 2, y: 0 }
+    ]
+  ];
+
+  const [curvePoints, setCurvePoints] = useState(
+    mapPointsToCanvas(normalizedCurves, canvasWidth, canvasHeight)
+  );
+
+  const draggingInfo = useRef({ curveIdx: null, pointIdx: null });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -77,75 +37,92 @@ export default function Rain2() {
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const origin = points[0];
-      const gridSpacing = 50;
-
       ctx.strokeStyle = "#eee";
       ctx.lineWidth = 1;
-      for (let x = origin.x % gridSpacing; x < canvas.width; x += gridSpacing) {
+      const gridSpacing = 50;
+      for (let x = 0; x < canvas.width; x += gridSpacing) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, canvas.height);
         ctx.stroke();
       }
-      for (let y = origin.y % gridSpacing; y < canvas.height; y += gridSpacing) {
+      for (let y = 0; y < canvas.height; y += gridSpacing) {
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(canvas.width, y);
         ctx.stroke();
       }
 
+      ctx.strokeStyle = "#ccc";
+      ctx.setLineDash([3, 3]);
+      const origin = curvePoints[0][0];
       ctx.beginPath();
       ctx.moveTo(0, origin.y);
       ctx.lineTo(canvas.width, origin.y);
       ctx.moveTo(origin.x, 0);
       ctx.lineTo(origin.x, canvas.height);
-      ctx.strokeStyle = "#ccc";
-      ctx.setLineDash([3, 3]);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      ctx.bezierCurveTo(
-        points[1].x, points[1].y,
-        points[2].x, points[2].y,
-        points[3].x, points[3].y
-      );
-      ctx.strokeStyle = "blue";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      ctx.lineTo(points[1].x, points[1].y);
-      ctx.lineTo(points[2].x, points[2].y);
-      ctx.lineTo(points[3].x, points[3].y);
-      ctx.strokeStyle = "gray";
-      ctx.setLineDash([5, 5]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      points.forEach((pt, i) => {
+      curvePoints.forEach((points, curveIdx) => {
         ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
-        ctx.fillStyle = i === 0 || i === 3 ? "black" : "red";
-        ctx.fill();
+        ctx.moveTo(points[0].x, points[0].y);
+        ctx.bezierCurveTo(
+          points[1].x, points[1].y,
+          points[2].x, points[2].y,
+          points[3].x, points[3].y
+        );
+        ctx.strokeStyle = "blue";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        ctx.lineTo(points[1].x, points[1].y);
+        ctx.lineTo(points[2].x, points[2].y);
+        ctx.lineTo(points[3].x, points[3].y);
+        ctx.strokeStyle = "gray";
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        points.forEach((pt, i) => {
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
+          const isSharedPoint =
+            (curveIdx > 0 && i === 0 &&
+              pt.x === curvePoints[curveIdx - 1][3].x &&
+              pt.y === curvePoints[curveIdx - 1][3].y) ||
+            (curveIdx < curvePoints.length - 1 && i === 3 &&
+              pt.x === curvePoints[curveIdx + 1][0].x &&
+              pt.y === curvePoints[curveIdx + 1][0].y);
+
+          if (isSharedPoint) {
+            ctx.fillStyle = "orange";
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 10, 0, Math.PI * 2);
+            ctx.strokeStyle = "orange";
+            ctx.stroke();
+          } else {
+            ctx.fillStyle = i === 0 || i === 3 ? "black" : "red";
+            ctx.fill();
+          }
+        });
       });
 
-      const relPoints = getRelativeBezierPoints(...points, segments, {
+      const allRelPoints = getMultiBezierPoints(curvePoints, segments, {
         valueMax: 50,
         valueJitter: 0.3,
         intervalMs: 100,
-        intervalJitter: 0.2,
-        decimalPlaces: 5
+        intervalJitter: 0.2
       });
 
-      setSamplePoints(relPoints);
+      setSamplePoints(allRelPoints);
 
-      for (let i = 0; i < segments; i++) {
-        const absX = relPoints[i].x + points[0].x;
-        const absY = points[0].y - relPoints[i].y;
+      for (let i = 0; i < allRelPoints.length; i++) {
+        const absX = allRelPoints[i].x;
+        const absY = allRelPoints[i].y;
         ctx.beginPath();
         ctx.arc(absX, absY, 3, 0, Math.PI * 2);
         ctx.fillStyle = "green";
@@ -153,7 +130,7 @@ export default function Rain2() {
 
         ctx.font = "10px sans-serif";
         ctx.fillStyle = "green";
-        ctx.fillText(`progress=${relPoints[i].progress}, v=${relPoints[i].value}`, absX + 5, absY - 5);
+        ctx.fillText(`progress=${allRelPoints[i].progress}, v=${allRelPoints[i].value}`, absX + 5, absY - 5);
       }
     }
 
@@ -161,23 +138,67 @@ export default function Rain2() {
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
-      const index = points.findIndex(p => Math.hypot(p.x - mx, p.y - my) < 10);
-      if (index !== -1) draggingPointRef.current = index;
+
+      for (let curveIdx = 0; curveIdx < curvePoints.length; curveIdx++) {
+        const curve = curvePoints[curveIdx];
+        const pointIdx = curve.findIndex(p => Math.hypot(p.x - mx, p.y - my) < 10);
+        if (pointIdx !== -1) {
+          draggingInfo.current = { curveIdx, pointIdx };
+          return;
+        }
+      }
     }
 
     function onMouseMove(e) {
-      if (draggingPointRef.current !== null) {
+      const dragging = draggingInfo.current;
+      if (dragging.curveIdx !== null && dragging.pointIdx !== null) {
         const rect = canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
-        const updated = [...points];
-        updated[draggingPointRef.current] = { x: mx, y: my };
-        setPoints(updated);
+
+        const updated = curvePoints.map((curve, i) => {
+          if (i === dragging.curveIdx) {
+            return curve.map((pt, j) =>
+              j === dragging.pointIdx ? { x: mx, y: my } : pt
+            );
+          }
+          if (
+            dragging.curveIdx + 1 === i &&
+            dragging.pointIdx === 3 &&
+            curvePoints[i][0].x === curvePoints[dragging.curveIdx][3].x &&
+            curvePoints[i][0].y === curvePoints[dragging.curveIdx][3].y
+          ) {
+            const p2 = curvePoints[dragging.curveIdx][2];
+            const dx = mx - p2.x;
+            const dy = my - p2.y;
+            return curve.map((pt, j) =>
+              j === 0 ? { x: mx, y: my } :
+              j === 1 ? { x: mx + dx, y: my + dy } : pt
+            );
+          }
+          if (
+            dragging.curveIdx - 1 === i &&
+            dragging.pointIdx === 0 &&
+            curvePoints[i][3].x === curvePoints[dragging.curveIdx][0].x &&
+            curvePoints[i][3].y === curvePoints[dragging.curveIdx][0].y
+          ) {
+            const p1 = curvePoints[dragging.curveIdx][1];
+            const dx = mx - p1.x;
+            const dy = my - p1.y;
+            return curve.map((pt, j) =>
+              j === 3 ? { x: mx, y: my } :
+              j === 2 ? { x: mx + dx, y: my + dy } : pt
+            );
+          }
+          return curve;
+        });
+
+        setCurvePoints(updated);
       }
     }
 
     function onMouseUp() {
-      draggingPointRef.current = null;
+      draggingInfo.current = { curveIdx: null, pointIdx: null };
     }
 
     canvas.addEventListener("mousedown", onMouseDown);
@@ -191,16 +212,10 @@ export default function Rain2() {
       canvas.removeEventListener("mousemove", onMouseMove);
       canvas.removeEventListener("mouseup", onMouseUp);
     };
-  }, [segments, points]);
+  }, [segments, curvePoints]);
 
   function copyToClipboard() {
     navigator.clipboard.writeText(JSON.stringify(samplePoints, null, 2));
-  }
-
-  function updatePoint(index, axis, value) {
-    const updated = [...points];
-    updated[index][axis] = parseInt(value) || 0;
-    setPoints(updated);
   }
 
   return (
@@ -215,31 +230,11 @@ export default function Rain2() {
         />
       </div>
 
-      <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
-        {points.map((pt, i) => (
-          <div key={i}>
-            <label>P{i}: </label>
-            <input
-              type="number"
-              value={pt.x}
-              onChange={(e) => updatePoint(i, "x", e.target.value)}
-              style={{ width: "60px", marginRight: "4px" }}
-            />
-            <input
-              type="number"
-              value={pt.y}
-              onChange={(e) => updatePoint(i, "y", e.target.value)}
-              style={{ width: "60px" }}
-            />
-          </div>
-        ))}
-      </div>
-
       <canvas
         ref={canvasRef}
         id="canvas"
-        width="600"
-        height="400"
+        width={canvasWidth}
+        height={canvasHeight}
         style={{ border: "1px solid #ccc", cursor: "pointer" }}
       />
       <div style={{ marginTop: "10px", fontFamily: "monospace" }}>

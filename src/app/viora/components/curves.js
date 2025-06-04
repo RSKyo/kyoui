@@ -1,3 +1,204 @@
+// 安全除法函数，避免除数为 0 导致 NaN 或 Infinity
+function safeDiv(numerator, denominator) {
+  return denominator === 0 ? 0 : numerator / denominator;
+}
+
+// 计算三次 Bézier 曲线在 t 时刻对应的点
+export function getBezierPoint(P0, P1, P2, P3, t) {
+  const x =
+    (1 - t) * (1 - t) * (1 - t) * P0.x +
+    3 * (1 - t) * (1 - t) * t * P1.x +
+    3 * (1 - t) * t * t * P2.x +
+    t * t * t * P3.x;
+
+  const y =
+    (1 - t) * (1 - t) * (1 - t) * P0.y +
+    3 * (1 - t) * (1 - t) * t * P1.y +
+    3 * (1 - t) * t * t * P2.y +
+    t * t * t * P3.y;
+
+  return { x, y };
+}
+
+// 生成 Bézier 曲线上的离散点数组
+// 每个点包含：绝对坐标、相对坐标、归一比例、时间和值（支持扰动）
+export function getBezierPoints(P0, P1, P2, P3, segments, options = {}) {
+  const {
+    valueMax = 50,         // 值最大值上限
+    valueJitter = 0.3,     // 值扰动比例
+    intervalMs = 100,      // 每段时间间隔（ms）
+    intervalJitter = 0.2,  // 时间扰动比例
+    ratioMode = 'endpoints', // 比例计算方式：'endpoints' 或 'bounds'
+  } = options;
+
+  const points = [];
+
+  // 采样 Bézier 曲线
+  for (let i = 0; i < segments; i++) {
+    const t = segments > 1 ? i / (segments - 1) : 0;
+    const { x, y } = getBezierPoint(P0, P1, P2, P3, t);
+
+    const relX = x - P0.x;
+    const relY = P0.y - y; // 以 P0 为中心，上为正，下为负
+
+    points.push({ progress: t, x, y, relX, relY });
+  }
+
+  // 准备比例计算所需数据
+  const allX = points.map(p => p.x);
+  const allY = points.map(p => p.y);
+  const minX = Math.min(...allX);
+  const maxX = Math.max(...allX);
+  const minY = Math.min(...allY);
+  const maxY = Math.max(...allY);
+  const maxRange = Math.max(maxX - minX, maxY - minY); // 用于 bounds 模式
+  const dx = P3.x - P0.x; // 用于 endpoints 模式
+
+  // 计算归一化比例（保持方向性）
+  for (const p of points) {
+    if (ratioMode === 'bounds') {
+      p.ratioX = safeDiv(p.relX, maxRange);
+      p.ratioY = safeDiv(p.relY, maxRange);
+    } else {
+      p.ratioX = safeDiv(p.relX, dx);
+      p.ratioY = safeDiv(p.relY, dx);
+    }
+  }
+
+  // 计算 relY 的最大绝对值，用于 value 归一化
+  const maxAbsRelY = Math.max(...points.map(p => Math.abs(p.relY))) || 1;
+
+  // 添加时间与值字段，支持扰动
+  for (let i = 0; i < segments; i++) {
+    const point = points[i];
+
+    const baseTime = i * intervalMs;
+    const timeJitter = intervalMs * intervalJitter * (Math.random() * 2 - 1);
+
+    const baseValue = (Math.abs(point.relY) / maxAbsRelY) * valueMax;
+    const valueJitterOffset = baseValue * valueJitter * (Math.random() * 2 - 1);
+
+    point.time = Math.max(0, Math.round(baseTime + timeJitter));
+    point.value = Math.max(0, Math.min(valueMax, Math.round(baseValue + valueJitterOffset)));
+  }
+
+  return points;
+}
+
+// 支持多段 Bézier 曲线拼接采样（避免重复首尾点）
+export function getMultiBezierPoints(bezierSegments, segmentsPerCurve, options = {}) {
+  const allPoints = [];
+  let offsetTime = 0;
+
+  for (let i = 0; i < bezierSegments.length; i++) {
+    const [P0, P1, P2, P3] = bezierSegments[i];
+    const segmentCount = i === 0 ? segmentsPerCurve : segmentsPerCurve + 1; // 后续段多一个点，方便去重
+    const segmentPoints = getBezierPoints(P0, P1, P2, P3, segmentCount, options);
+
+    // 去重起点：除了第一段，其它段去掉第一个点（即前一段终点）
+    const usablePoints = i === 0 ? segmentPoints : segmentPoints.slice(1);
+
+    // 时间递增叠加（防止所有段 time 重叠）
+    for (const p of usablePoints) {
+      p.time += offsetTime;
+    }
+
+    offsetTime = usablePoints.at(-1)?.time ?? offsetTime;
+    allPoints.push(...usablePoints);
+  }
+
+  return allPoints;
+}
+
+// 接收多个归一化 Bézier 段控制点数组，统一映射到 Canvas 坐标系
+export function mapPointsToCanvas(bezierSegments, canvasWidth, canvasHeight) {
+  const allPoints = bezierSegments.flat();
+
+  const marginRatio = 0.1;
+  const marginX = canvasWidth * marginRatio;
+  const marginY = canvasHeight * marginRatio;
+  const drawWidth = canvasWidth - 2 * marginX;
+  const drawHeight = canvasHeight - 2 * marginY;
+
+  const xs = allPoints.map(p => p.x);
+  const ys = allPoints.map(p => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+
+  const scaleX = drawWidth / rangeX;
+  const scaleY = drawHeight / rangeY;
+  const scale = Math.min(scaleX, scaleY);
+
+  return bezierSegments.map(segment =>
+    segment.map(p => ({
+      x: marginX + (p.x - minX) * scale,
+      y: canvasHeight - marginY - (p.y - minY) * scale,
+    }))
+  );
+}
+
+
+// 更新首尾相连 Bézier 曲线中某个点的坐标，并自动调整相邻控制点
+export function updateLinkedBezierPoint(segments, segmentIndex, pointIndex, newPos) {
+  const updated = structuredClone(segments); // 深拷贝
+  const current = updated[segmentIndex];
+  const [P0, P1, P2, P3] = current;
+
+  // 更新当前段中的指定点
+  current[pointIndex] = { ...current[pointIndex], ...newPos };
+
+  // === 共用锚点变更时，调整相邻控制点使其保持一线 ===
+  if (pointIndex === 0 && segmentIndex > 0) {
+    // P0 是当前段起点，也是前一段终点
+    const prev = updated[segmentIndex - 1];
+    prev[3] = { ...newPos }; // 同步 P3
+    // 调整 P2 - [P3==P0] - P1 成一直线
+    const p2 = prev[2];
+    const mirroredP1 = mirrorPoint(p2, newPos);
+    current[1] = mirroredP1;
+  }
+
+  if (pointIndex === 3 && segmentIndex < updated.length - 1) {
+    // P3 是当前段终点，也是下一段起点
+    const next = updated[segmentIndex + 1];
+    next[0] = { ...newPos }; // 同步 P0
+    // 调整 P2 - [P3==P0] - P1 成一直线
+    const p1 = next[1];
+    const mirroredP2 = mirrorPoint(p1, newPos);
+    current[2] = mirroredP2;
+  }
+
+  // === 控制点镜像 ===
+  if (pointIndex === 2 && segmentIndex < updated.length - 1) {
+    const anchor = current[3];
+    updated[segmentIndex + 1][1] = mirrorPoint(newPos, anchor);
+  }
+
+  if (pointIndex === 1 && segmentIndex > 0) {
+    const anchor = current[0];
+    updated[segmentIndex - 1][2] = mirrorPoint(newPos, anchor);
+  }
+
+  return updated;
+}
+
+// 计算以 anchor 为中心对称的点
+function mirrorPoint(p, anchor) {
+  return {
+    x: anchor.x * 2 - p.x,
+    y: anchor.y * 2 - p.y,
+  };
+}
+
+
+
+
+
 /**
  * 生成周期正弦波或余弦波的采样数据。
  *
@@ -67,15 +268,12 @@ export function generateEasingData(points = 100, type = "easeInOutSine") {
     easeInOutSine: (p) => -(Math.cos(Math.PI * p) - 1) / 2,
 
     // 缓入缓出，速度变化比 Sine 更明显
-    easeInOutQuad: (p) => p < 0.5
-      ? 2 * p * p
-      : 1 - Math.pow(-2 * p + 2, 2) / 2,
+    easeInOutQuad: (p) =>
+      p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2,
 
     // 缓入缓出（三次方）—— 开头结尾慢，中间快
     easeInOutCubic: (p) =>
-      p < 0.5
-        ? 4 * p * p * p
-        : 1 - Math.pow(-2 * p + 2, 3) / 2,
+      p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2,
 
     // 缓入缓出（回拉感强）
     easeInOutBack: (p) => {
@@ -90,7 +288,7 @@ export function generateEasingData(points = 100, type = "easeInOutSine") {
     easeInCubic: (p) => p * p * p,
 
     // 缓入（指数）—— 非常缓慢启动后迅速加速
-    easeInExpo: (p) => p === 0 ? 0 : Math.pow(2, 10 * p - 10),
+    easeInExpo: (p) => (p === 0 ? 0 : Math.pow(2, 10 * p - 10)),
 
     // 缓入（略带反弹感）
     easeInBack: (p) => {
@@ -102,7 +300,7 @@ export function generateEasingData(points = 100, type = "easeInOutSine") {
     easeOutCubic: (p) => 1 - Math.pow(1 - p, 3),
 
     // 缓出（指数）—— 快速启动后迅速减速
-    easeOutExpo: (p) => p === 1 ? 1 : 1 - Math.pow(2, -10 * p),
+    easeOutExpo: (p) => (p === 1 ? 1 : 1 - Math.pow(2, -10 * p)),
 
     // 缓出（略带反弹感）
     easeOutBack: (p) => {
@@ -128,173 +326,3 @@ export function generateEasingData(points = 100, type = "easeInOutSine") {
 
   return data;
 }
-
-
-export function sampleBezierData(P0, P1, P2, P3, segments, options = {}) {
-  const {
-    valueMax = 50,
-    valueJitter = 0.3,
-    intervalMs = 100,
-    intervalJitter = 0.2
-  } = options;
-
-  function bezierPoint(t) {
-    const x =
-      Math.pow(1 - t, 3) * P0.x +
-      3 * Math.pow(1 - t, 2) * t * P1.x +
-      3 * (1 - t) * Math.pow(t, 2) * P2.x +
-      Math.pow(t, 3) * P3.x;
-
-    const y =
-      Math.pow(1 - t, 3) * P0.y +
-      3 * Math.pow(1 - t, 2) * t * P1.y +
-      3 * (1 - t) * Math.pow(t, 2) * P2.y +
-      Math.pow(t, 3) * P3.y;
-
-    return { x, y };
-  }
-
-  const relativePoints = [];
-  let maxY = 1;
-
-  for (let i = 0; i < segments; i++) {
-    const t = i / (segments - 1);
-    const abs = bezierPoint(t);
-    const relX = Math.round(abs.x - P0.x);
-    const relY = Math.round(P0.y - abs.y);
-
-    maxY = Math.max(maxY, Math.abs(relY));
-
-    relativePoints.push({
-      progress: parseFloat(t.toFixed(5)),
-      x: relX,
-      y: relY
-    });
-  }
-
-  relativePoints.forEach((p, i) => {
-    const base = (p.y / maxY) * valueMax;
-    const jitterValue = base * valueJitter * (Math.random() * 2 - 1);
-    p.value = Math.round(base + jitterValue);
-
-    const timeBase = i * intervalMs;
-    const jitterTime = timeBase * intervalJitter * (Math.random() * 2 - 1);
-    p.time = Math.round(timeBase + jitterTime);
-  });
-
-  return relativePoints;
-}
-
-
-export function drawWaveCurve() {
-      const colors = [
-            "red",
-            "blue",
-          ];
-          const funcs = [
-            "sin",
-            "cos",
-          ];
-          const waveData = [];
-          funcs.forEach(n=>{
-            waveData.push({ n: n, data: generateWaveData(1, 100, n)});
-          });
-
-          waveData.forEach((d, i) => {
-            this.ctx.beginPath();
-            this.ctx.strokeStyle = colors[i];
-            d.data.forEach((d, j) => {
-              const x = d.progress * this.width;
-              const y = this.height / 4 + ((1 - d.y) * this.height) / 4;
-              console.log( `x:${x},y:${y}`)
-              if (j === 0) this.ctx.moveTo(x, y);
-              else this.ctx.lineTo(x, y);
-            });
-            this.ctx.stroke();
-            this.ctx.fillStyle = colors[i];
-            this.ctx.fillText(d.n, 10, 10 + i * 10);
-          });
-    }
-
-    export function drawCurve(ctx, {
-  points,
-  color = "black",
-  lineWidth = 1,
-  label = "",
-  font = "12px sans-serif",
-  labelPosition = "start",
-  drawDot = false
-}) {
-  if (!ctx || !points || points.length === 0) return;
-
-  ctx.beginPath();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = lineWidth;
-
-  points.forEach((pt, i) => {
-    const { x, y } = pt;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-
-  ctx.stroke();
-
-  if (drawDot) {
-    points.forEach(pt => {
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-    });
-  }
-
-  if (label) {
-    const labelPt = labelPosition === "end" ? points[points.length - 1] : points[0];
-    ctx.font = font;
-    ctx.fillStyle = color;
-    ctx.fillText(label, labelPt.x + 4, labelPt.y - 4);
-  }
-}
-
-    export function drawEasingCurve() {
-      const colors = [
-            "red",
-            "green",
-            "blue",
-            "orange",
-            "purple",
-            "brown",
-            "teal",
-            "pink",
-            "gray",
-          ];
-          const funcs = [
-            "easeInOutSine",
-            "easeInOutQuad",
-            "easeInCubic",
-            "easeOutCubic",
-            "easeInOutCubic",
-            "easeInExpo",
-            "easeOutExpo",
-            "easeInBack",
-            "easeOutBack",
-          ];
-          const easingData = [];
-          funcs.forEach(d=>{
-            easingData.push({ n: d, data: generateEasingData(100, d)});
-          });
-
-          easingData.forEach((d, i) => {
-            this.ctx.beginPath();
-            this.ctx.strokeStyle = colors[i];
-            d.data.forEach((d, j) => {
-              const x = d.progress * this.width;
-              const y = this.height / 4 + ((1 - d.y) * this.height) / 4;
-              if (j === 0) this.ctx.moveTo(x, y);
-              else this.ctx.lineTo(x, y);
-            });
-            this.ctx.stroke();
-            this.ctx.fillStyle = colors[i];
-            this.ctx.fillText(d.n, 10, 10 + i * 10);
-          });
-    }
