@@ -1,113 +1,187 @@
 // 安全除法函数，避免除数为 0 导致 NaN 或 Infinity
-function safeDiv(numerator, denominator) {
-  return denominator === 0 ? 0 : numerator / denominator;
+function safeDiv(a, b) {
+  return b === 0 ? 0 : a / b;
+}
+
+// 根据任意点数组 或 分段 Bézier 控制点数组，返回全局坐标范围信息（用于归一化）
+// 支持：
+// - 普通点数组：[p0, p1, p2, ...]
+// - Bézier 段控制点数组：[[p0, p1, p2, p3], [p3, p4, p5, p6], ...]
+export function getPointsBounds(points) {
+  const flatPoints = points.flat();
+  const allX = flatPoints.map((p) => p.x);
+  const allY = flatPoints.map((p) => p.y);
+
+  const minX = Math.min(...allX);
+  const maxX = Math.max(...allX);
+  const minY = Math.min(...allY);
+  const maxY = Math.max(...allY);
+  const maxRange = Math.max(maxX - minX, maxY - minY) || 1;
+  const dx = flatPoints.at(-1).x - flatPoints[0].x || 1;
+
+  return { minX, maxX, minY, maxY, maxRange, dx };
+}
+
+// 根据任意点数组 或 分段 Bézier 控制点数组、模式，进行归一化，返回 [0,1] 坐标值
+// 支持：
+// - 普通点数组：[p0, p1, p2, ...]
+// - Bézier 段控制点数组：[[p0, p1, p2, p3], [p3, p4, p5, p6], ...]
+// mode 可选值：
+// - 'bounds'：以整体范围 max(maxX - minX, maxY - minY) 缩放（保持长宽比）
+// - 'endpoints'：以首尾点水平距离缩放（适合时间轴类横向场景）
+export function getPointsNormalized(points, options = {}) {
+  const flatPoints = points.flat();
+  if (flatPoints.length < 2) return [];
+
+  const { mode = "bounds", bounds = null } = options;
+  const { minX, minY, maxRange, dx } = bounds || getPointsBounds(points);
+
+  return points.map((p) => ({
+    x:
+      mode === "bounds"
+        ? safeDiv(p.x - minX, maxRange)
+        : safeDiv(p.x - flatPoints[0].x, dx),
+    y:
+      mode === "bounds"
+        ? safeDiv(p.y - minY, maxRange)
+        : safeDiv(flatPoints[0].y - p.y, dx),
+  }));
 }
 
 // 计算三次 Bézier 曲线在 t 时刻对应的点
 export function getBezierPoint(P0, P1, P2, P3, t) {
   const x =
-    (1 - t) * (1 - t) * (1 - t) * P0.x +
-    3 * (1 - t) * (1 - t) * t * P1.x +
-    3 * (1 - t) * t * t * P2.x +
-    t * t * t * P3.x;
+    (1 - t) ** 3 * P0.x +
+    3 * (1 - t) ** 2 * t * P1.x +
+    3 * (1 - t) * t ** 2 * P2.x +
+    t ** 3 * P3.x;
 
   const y =
-    (1 - t) * (1 - t) * (1 - t) * P0.y +
-    3 * (1 - t) * (1 - t) * t * P1.y +
-    3 * (1 - t) * t * t * P2.y +
-    t * t * t * P3.y;
+    (1 - t) ** 3 * P0.y +
+    3 * (1 - t) ** 2 * t * P1.y +
+    3 * (1 - t) * t ** 2 * P2.y +
+    t ** 3 * P3.y;
 
   return { x, y };
 }
 
-// 生成 Bézier 曲线上的离散点数组
-// 每个点包含：绝对坐标、相对坐标、归一比例、时间和值（支持扰动）
-export function getBezierPoints(P0, P1, P2, P3, segments, options = {}) {
-  const {
-    valueMax = 50,         // 值最大值上限
-    valueJitter = 0.3,     // 值扰动比例
-    intervalMs = 100,      // 每段时间间隔（ms）
-    intervalJitter = 0.2,  // 时间扰动比例
-    ratioMode = 'endpoints', // 比例计算方式：'endpoints' 或 'bounds'
-  } = options;
-
+// 生成单段 Bézier 曲线的采样点
+// - P0, P1, P2, P3: Bézier 曲线的四个控制点
+// - samples: 采样点数量（除非 dedupe=true，否则将生成该数量的点）
+// - options: 用于多段拼接
+//   - origin: 用于计算 relX 和 relY 的原点（默认使用 P0）
+//   - dedupe: 是否跳过第一个采样点（通常用于多段拼接时避免重复连接点）
+//   - gIdx: 当前段的全局起始采样索引，用于 progress 归一化
+//   - gCount: 全部段落的总采样数，用于归一化 progress
+export function getBezierPoints(
+  P0,
+  P1,
+  P2,
+  P3,
+  samples,
+  { origin = P0, dedupe = false, gIdx = 0, gCount = samples } = {}
+) {
   const points = [];
-
-  // 采样 Bézier 曲线
-  for (let i = 0; i < segments; i++) {
-    const t = segments > 1 ? i / (segments - 1) : 0;
+  samples = dedupe ? samples + 1 : samples;
+  for (let i = 0; i < samples; i++) {
+    if (dedupe && i == 0) continue;
+    const t = samples > 1 ? i / (samples - 1) : 0;
     const { x, y } = getBezierPoint(P0, P1, P2, P3, t);
-
-    const relX = x - P0.x;
-    const relY = P0.y - y; // 以 P0 为中心，上为正，下为负
-
-    points.push({ progress: t, x, y, relX, relY });
-  }
-
-  // 准备比例计算所需数据
-  const allX = points.map(p => p.x);
-  const allY = points.map(p => p.y);
-  const minX = Math.min(...allX);
-  const maxX = Math.max(...allX);
-  const minY = Math.min(...allY);
-  const maxY = Math.max(...allY);
-  const maxRange = Math.max(maxX - minX, maxY - minY); // 用于 bounds 模式
-  const dx = P3.x - P0.x; // 用于 endpoints 模式
-
-  // 计算归一化比例（保持方向性）
-  for (const p of points) {
-    if (ratioMode === 'bounds') {
-      p.ratioX = safeDiv(p.relX, maxRange);
-      p.ratioY = safeDiv(p.relY, maxRange);
-    } else {
-      p.ratioX = safeDiv(p.relX, dx);
-      p.ratioY = safeDiv(p.relY, dx);
-    }
-  }
-
-  // 计算 relY 的最大绝对值，用于 value 归一化
-  const maxAbsRelY = Math.max(...points.map(p => Math.abs(p.relY))) || 1;
-
-  // 添加时间与值字段，支持扰动
-  for (let i = 0; i < segments; i++) {
-    const point = points[i];
-
-    const baseTime = i * intervalMs;
-    const timeJitter = intervalMs * intervalJitter * (Math.random() * 2 - 1);
-
-    const baseValue = (Math.abs(point.relY) / maxAbsRelY) * valueMax;
-    const valueJitterOffset = baseValue * valueJitter * (Math.random() * 2 - 1);
-
-    point.time = Math.max(0, Math.round(baseTime + timeJitter));
-    point.value = Math.max(0, Math.min(valueMax, Math.round(baseValue + valueJitterOffset)));
+    const relX = x - origin.x;
+    const relY = origin.y - y;
+    points.push({
+      progress: (gIdx + (dedupe ? i - 1 : i)) / (gCount - 1),
+      x,
+      y,
+      relX,
+      relY,
+    });
   }
 
   return points;
 }
 
-// 支持多段 Bézier 曲线拼接采样（避免重复首尾点）
-export function getMultiBezierPoints(bezierSegments, segmentsPerCurve, options = {}) {
-  const allPoints = [];
-  let offsetTime = 0;
+// 多段 Bézier 曲线统一采样（支持每段不同采样数）
+// - beziers: 每段 Bézier 曲线的控制点数组（每项为 [P0, P1, P2, P3]）
+// - samples: 每段采样数，可为统一 number，也可为数组 [5, 10, 15, ...]
+// - defaultPerSamples: 若 samples 为数组且某段缺省，用此默认值补足
+export function getMultiBezierPoints(
+  beziers,
+  samples,
+  { defaultPerSamples = 10 }
+) {
+  const origin = beziers[0][0];
+  const isNumber = typeof samples === "number";
+  // 每段采样数数组：统一数量或按段分别指定
+  const samplesArray = beziers.map((_, i) =>
+    isNumber ? samples : samples[i] ?? defaultPerSamples
+  );
+  // 全局采样总数（用于 progress 归一化）
+  const gCount = samplesArray.reduce((sum, segs) => sum + segs, 0);
 
-  for (let i = 0; i < bezierSegments.length; i++) {
-    const [P0, P1, P2, P3] = bezierSegments[i];
-    const segmentCount = i === 0 ? segmentsPerCurve : segmentsPerCurve + 1; // 后续段多一个点，方便去重
-    const segmentPoints = getBezierPoints(P0, P1, P2, P3, segmentCount, options);
+  // 分段采样并拼接，去重连接点
+  return beziers.flatMap((bezier, i) => {
+    const [P0, P1, P2, P3] = bezier;
+    const perSamples = samplesArray[i];
+    const dedupe = i !== 0;
+    const gIdx = samplesArray.slice(0, i).reduce((sum, segs) => sum + segs, 0);
+    return getBezierPoints(P0, P1, P2, P3, perSamples, {
+      origin,
+      dedupe,
+      gIdx,
+      gCount,
+    });
+  });
+}
 
-    // 去重起点：除了第一段，其它段去掉第一个点（即前一段终点）
-    const usablePoints = i === 0 ? segmentPoints : segmentPoints.slice(1);
+// 将 Bézier 采样点转换为时间 + 值（支持扰动、归一化 relY 映射为 value）
+function mapPointsToTimedValues(points, options = {}) {
+  const {
+    valueMin = 1,
+    valueMax = 50,
+    valueJitter = 0.3,
+    intervalMs = 100,
+    intervalJitter = 0.2,
+  } = options;
 
-    // 时间递增叠加（防止所有段 time 重叠）
-    for (const p of usablePoints) {
-      p.time += offsetTime;
-    }
+  const maxAbsRelY = Math.max(...points.map((p) => Math.abs(p.relY))) || 1;
 
-    offsetTime = usablePoints.at(-1)?.time ?? offsetTime;
-    allPoints.push(...usablePoints);
-  }
+  return points.map((p, i) => {
+    const baseTime = i * intervalMs;
+    const jitterTime = intervalMs * intervalJitter * (Math.random() * 2 - 1);
+    const time = Math.max(0, Math.round(baseTime + jitterTime));
 
-  return allPoints;
+    const norm = Math.abs(p.relY) / maxAbsRelY;
+    const baseValue = norm * (valueMax - valueMin) + valueMin;
+    const jitterValue = baseValue * valueJitter * (Math.random() * 2 - 1);
+    const value = Math.max(valueMin, Math.round(baseValue + jitterValue));
+
+    return { progress: p.progress, time, value };
+  });
+}
+
+// 单段 Bézier 曲线生成时间-值点
+export function generateBezierTimedValues(
+  P0,
+  P1,
+  P2,
+  P3,
+  segments,
+  options = {}
+) {
+  if (segments < 1 || !Number.isInteger(segments)) return [];
+  const points = getBezierPoints(P0, P1, P2, P3, segments);
+  return mapPointsToTimedValues(points, options);
+}
+
+// 多段 Bézier 曲线生成连续时间-值点
+export function generateMultiBezierTimedValues(
+  bezierSegments,
+  segmentsPerCurve,
+  options = {}
+) {
+  const points = getMultiBezierPoints(bezierSegments, segmentsPerCurve);
+  return mapPointsToTimedValues(points, options);
 }
 
 // 接收多个归一化 Bézier 段控制点数组，统一映射到 Canvas 坐标系
@@ -120,8 +194,8 @@ export function mapPointsToCanvas(bezierSegments, canvasWidth, canvasHeight) {
   const drawWidth = canvasWidth - 2 * marginX;
   const drawHeight = canvasHeight - 2 * marginY;
 
-  const xs = allPoints.map(p => p.x);
-  const ys = allPoints.map(p => p.y);
+  const xs = allPoints.map((p) => p.x);
+  const ys = allPoints.map((p) => p.y);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
@@ -134,70 +208,91 @@ export function mapPointsToCanvas(bezierSegments, canvasWidth, canvasHeight) {
   const scaleY = drawHeight / rangeY;
   const scale = Math.min(scaleX, scaleY);
 
-  return bezierSegments.map(segment =>
-    segment.map(p => ({
+  return bezierSegments.map((segment) =>
+    segment.map((p) => ({
       x: marginX + (p.x - minX) * scale,
       y: canvasHeight - marginY - (p.y - minY) * scale,
     }))
   );
 }
 
-
 // 更新首尾相连 Bézier 曲线中某个点的坐标，并自动调整相邻控制点
-export function updateLinkedBezierPoint(segments, segmentIndex, pointIndex, newPos) {
-  const updated = structuredClone(segments); // 深拷贝
-  const current = updated[segmentIndex];
-  const [P0, P1, P2, P3] = current;
+export function updateLinkedBezierPoint(
+  beziers,
+  segmentIdx,
+  pointIdx,
+  newPoint
+) {
+  // 深拷贝防止修改原数组（使用 JSON 方法替代 structuredClone 以兼容旧浏览器）
+  const updated = JSON.parse(JSON.stringify(beziers));
+  const current = updated[segmentIdx]; // 当前曲线段
+  const dx = newPoint.x - current[pointIdx].x;
+  const dy = newPoint.y - current[pointIdx].y;
 
-  // 更新当前段中的指定点
-  current[pointIndex] = { ...current[pointIndex], ...newPos };
+  // 更新当前目标点
+  current[pointIdx] = { ...newPoint };
 
-  // === 共用锚点变更时，调整相邻控制点使其保持一线 ===
-  if (pointIndex === 0 && segmentIndex > 0) {
-    // P0 是当前段起点，也是前一段终点
-    const prev = updated[segmentIndex - 1];
-    prev[3] = { ...newPos }; // 同步 P3
-    // 调整 P2 - [P3==P0] - P1 成一直线
-    const p2 = prev[2];
-    const mirroredP1 = mirrorPoint(p2, newPos);
-    current[1] = mirroredP1;
+  // 同步更新相邻控制点，保持曲线连续与平滑
+
+  // 若更新的是 p0：
+  // - 向量方向相同地移动 p1
+  // - 同步更新上一段的 p3 = 当前 p0
+  // - 上一段的 p2 镜像自当前 p1 关于 p0
+  if (pointIdx === 0) {
+    const p0 = current[pointIdx];
+    const p1 = current[pointIdx + 1];
+    const movedP1 = (current[pointIdx + 1] = { x: p1.x + dx, y: p1.y + dy });
+    const prev = updated[segmentIdx - 1];
+    if (prev) {
+      prev[3] = { ...p0 };
+      prev[2] = mirrorPoint(movedP1, p0);
+    }
   }
-
-  if (pointIndex === 3 && segmentIndex < updated.length - 1) {
-    // P3 是当前段终点，也是下一段起点
-    const next = updated[segmentIndex + 1];
-    next[0] = { ...newPos }; // 同步 P0
-    // 调整 P2 - [P3==P0] - P1 成一直线
-    const p1 = next[1];
-    const mirroredP2 = mirrorPoint(p1, newPos);
-    current[2] = mirroredP2;
+  // 若更新的是 p1：
+  // - 上一段的 p2 镜像自当前 p1 关于 p0
+  else if (pointIdx === 1) {
+    const p1 = current[pointIdx];
+    const p0 = current[pointIdx - 1];
+    const prev = updated[segmentIdx - 1];
+    if (prev) {
+      prev[2] = mirrorPoint(p1, p0);
+    }
   }
-
-  // === 控制点镜像 ===
-  if (pointIndex === 2 && segmentIndex < updated.length - 1) {
-    const anchor = current[3];
-    updated[segmentIndex + 1][1] = mirrorPoint(newPos, anchor);
+  // 若更新的是 p2：
+  // - 下一段的 p1 镜像自当前 p2 关于 p3
+  else if (pointIdx === 2) {
+    const p2 = current[pointIdx];
+    const p3 = current[pointIdx + 1];
+    const next = updated[segmentIdx + 1];
+    if (next) {
+      next[1] = mirrorPoint(p2, p3);
+    }
   }
-
-  if (pointIndex === 1 && segmentIndex > 0) {
-    const anchor = current[0];
-    updated[segmentIndex - 1][2] = mirrorPoint(newPos, anchor);
+  // 若更新的是 p3：
+  // - 向量方向相同地移动 p2
+  // - 同步更新下一段的 p0 = 当前 p3
+  // - 下一段的 p1 镜像自当前 p2 关于 p3
+  else if (pointIdx === 3) {
+    const p3 = current[pointIdx];
+    const p2 = current[pointIdx - 1];
+    const movedP2 = (current[pointIdx - 1] = { x: p2.x + dx, y: p2.y + dy });
+    const next = updated[segmentIdx + 1];
+    if (next) {
+      next[0] = { ...p3 };
+      next[1] = mirrorPoint(movedP2, p3);
+    }
   }
 
   return updated;
 }
 
-// 计算以 anchor 为中心对称的点
+// 计算对称点
 function mirrorPoint(p, anchor) {
   return {
     x: anchor.x * 2 - p.x,
     y: anchor.y * 2 - p.y,
   };
 }
-
-
-
-
 
 /**
  * 生成周期正弦波或余弦波的采样数据。
