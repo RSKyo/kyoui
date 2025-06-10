@@ -11,8 +11,7 @@ function mirrorPoint(p, anchor) {
   };
 }
 
-export function getPointsBounds(points, options = {}) {
-  const { width = 0, height = 0, marginRatio = 0 } = options;
+function getPointsBounds(points) {
   const flatPoints = points.flat();
   const allX = flatPoints.map((p) => p.x);
   const allY = flatPoints.map((p) => p.y);
@@ -26,13 +25,6 @@ export function getPointsBounds(points, options = {}) {
   const rangeY = maxY - minY || 1;
   const minRange = Math.max(rangeX, rangeY) || 1;
   const maxRange = Math.max(rangeX, rangeY) || 1;
-  // 以下跟画布有关
-  const scaleX = (width - 2 * marginRatio * width) / rangeX || 1;
-  const scaleY = (height - 2 * marginRatio * height) / rangeY || 1;
-  const minScale = Math.min(scaleX, scaleY);
-  const maxScale = Math.max(scaleX, scaleY);
-  const marginX = width * marginRatio;
-  const marginY = height * marginRatio;
 
   return {
     isSegmented,
@@ -44,6 +36,24 @@ export function getPointsBounds(points, options = {}) {
     rangeY,
     minRange,
     maxRange,
+  };
+}
+
+function getCanvasScaleFromBounds(
+  width,
+  height,
+  bounds,
+  { marginRatio = 0 } = {}
+) {
+  const { rangeX, rangeY } = bounds;
+  const scaleX = (width * (1 - 2 * marginRatio)) / rangeX;
+  const scaleY = (height * (1 - 2 * marginRatio)) / rangeY;
+  const minScale = Math.min(scaleX, scaleY);
+  const maxScale = Math.max(scaleX, scaleY);
+  const marginX = width * marginRatio;
+  const marginY = height * marginRatio;
+
+  return {
     scaleX,
     scaleY,
     minScale,
@@ -53,44 +63,8 @@ export function getPointsBounds(points, options = {}) {
   };
 }
 
-export function mapPointsToNormalized(points, bounds = null) {
-  const isSegmented = Array.isArray(points[0]);
-  const { minX, minY, maxRange } = bounds || getPointsBounds(points);
-  const normalize = (p) => ({
-    x: safeDiv(p.x - minX, maxRange),
-    y: safeDiv(p.y - minY, maxRange),
-  });
-
-  return isSegmented
-    ? points.map((segment) => segment.map(normalize))
-    : points.map(normalize);
-}
-
-export function mapPointsToCanvas(
-  points,
-  canvasWidth,
-  canvasHeight,
-  options={}
-) {
-  const {bounds = null,
-    marginRatio = 0.05
-  } = options;
-  const { isSegmented, minX, minY, minScale, marginX, marginY } =
-    bounds ||
-    getPointsBounds(points, { canvasWidth, canvasHeight, marginRatio });
-
-  const project = (p) => ({
-    x: marginX + (p.x - minX) * minScale,
-    y: marginY + (p.y - minY) * minScale,
-  });
-
-  return isSegmented
-    ? points.map((segment) => segment.map(project))
-    : points.map(project);
-}
-
 // 计算三次 Bézier 曲线在 t 时刻对应的点
-export function getBezierPoint(P0, P1, P2, P3, t) {
+function evaluateBezier(P0, P1, P2, P3, t) {
   const x =
     (1 - t) ** 3 * P0.x +
     3 * (1 - t) ** 2 * t * P1.x +
@@ -107,66 +81,112 @@ export function getBezierPoint(P0, P1, P2, P3, t) {
 }
 
 // 生成单段 Bézier 曲线的采样点
-// - P0, P1, P2, P3: Bézier 曲线的四个控制点
-// - samples: 采样点数量（除非 dedupe=true，否则将生成该数量的点）
-// - options: 用于多段拼接
-//   - origin: 用于计算 relX 和 relY 的原点（默认使用 P0）
-//   - dedupe: 是否跳过第一个采样点（通常用于多段拼接时避免重复连接点）
-//   - gIdx: 当前段的全局起始采样索引，用于 progress 归一化
-//   - gCount: 全部段落的总采样数，用于归一化 progress
-export function getBezierPoints(
-  P0,
-  P1,
-  P2,
-  P3,
-  samples,
-  { origin = P0, dedupe = false, gIdx = 0, gCount = samples } = {}
-) {
+function sampleSingleBezier(P0, P1, P2, P3, samples, options = {}) {
+  const { origin = P0, gIdx = 0, gCount = samples } = options;
+  const dedupe = gIdx > 0;
+  const totalSamples = dedupe ? samples + 1 : samples;
+
   const points = [];
-  samples = dedupe ? samples + 1 : samples;
-  for (let i = 0; i < samples; i++) {
-    if (dedupe && i == 0) continue;
-    const t = samples > 1 ? i / (samples - 1) : 0;
-    const { x, y } = getBezierPoint(P0, P1, P2, P3, t);
+  let [minX, maxX, maxAbsRelX, minY, maxY, maxAbsRelY] = [0, 0, 0, 0, 0, 0];
+  for (let i = 0; i < totalSamples; i++) {
+    if (dedupe && i === 0) continue;
+    // progress
+    const localIndex = gIdx + dedupe ? i - 1 : i;
+    const progress = safeDiv(localIndex, gCount - 1);
+    // x, y
+    const t = safeDiv(i, totalSamples - 1);
+    const { x, y } = evaluateBezier(P0, P1, P2, P3, t, { origin });
+    // relX, relY
     const relX = x - origin.x;
     const relY = origin.y - y;
-    points.push({
-      progress: (gIdx + (dedupe ? i - 1 : i)) / (gCount - 1),
-      x,
-      y,
-      relX,
-      relY,
-    });
+
+    // minY, maxY, maxAbsRelY
+    minX = x < minX ? x : minX;
+    maxX = y > maxX ? x : maxX;
+    maxAbsRelX = Math.abs(relX) > maxAbsRelX ? Math.abs(relX) : maxAbsRelX;
+    minY = y < minY ? y : minY;
+    maxY = y > maxY ? y : maxY;
+    maxAbsRelY = Math.abs(relY) > maxAbsRelY ? Math.abs(relY) : maxAbsRelY;
+
+    points.push({ progress, x, y, relX, relY });
   }
 
-  return points;
+  const rangeY = maxY - minY;
+  return points.map((p) => {
+    const normX = safeDiv(p.x - minX, rangeX);
+    const relNormX = safeDiv(p.relX, maxAbsRelX);
+    const normY = safeDiv(p.y - minY, rangeY);
+    const relNormY = safeDiv(p.relY, maxAbsRelY);
+    return {
+      ...p,
+      normX,
+      relNormX,
+      normY,
+      relNormY,
+    };
+  });
 }
 
-// 多段 Bézier 曲线统一采样（支持每段不同采样数）
-// - beziers: 每段 Bézier 曲线的控制点数组（每项为 [P0, P1, P2, P3]）
-// - samples: 每段采样数，可为统一 number，也可为数组 [5, 10, 15, ...]
-// - defaultPerSamples: 若 samples 为数组且某段缺省，用此默认值补足
-export function getMultiBezierPoints(
+export function normalizePoints(points) {
+  const { isSegmented, minX, minY, maxRange } = getPointsBounds(points);
+  const normalize = (p) => ({
+    ...p,
+    x: safeDiv(p.x - minX, maxRange),
+    y: safeDiv(p.y - minY, maxRange),
+  });
+
+  return isSegmented
+    ? points.map((segment) => segment.map(normalize))
+    : points.map(normalize);
+}
+
+export function mapPointsToCanvas(
+  points,
+  canvasWidth,
+  canvasHeight,
+  marginRatio = 0.05
+) {
+  const bounds = getPointsBounds(points);
+  const { isSegmented, minX, minY } = bounds;
+  const { minScale, marginX, marginY } = getCanvasScaleFromBounds(
+    canvasWidth,
+    canvasHeight,
+    bounds,
+    { marginRatio }
+  );
+
+  const project = (p) => ({
+    ...p,
+    x: marginX + (p.x - minX) * minScale,
+    y: marginY + (p.y - minY) * minScale,
+  });
+
+  return isSegmented
+    ? points.map((segment) => segment.map(project))
+    : points.map(project);
+}
+
+export function sampleBezierPoints(
   beziers,
   samples,
-  { defaultPerSamples = 10 } = {}
+  { defaultSegmentSamples = 10 } = {}
 ) {
-  const origin = beziers[0][0];
-  const isNumber = typeof samples === "number";
-  // 每段采样数数组：统一数量或按段分别指定
-  const samplesArray = beziers.map((_, i) =>
-    isNumber ? samples : samples[i] ?? defaultPerSamples
-  );
-  // 全局采样总数（用于 progress 归一化）
-  const gCount = samplesArray.reduce((sum, segs) => sum + segs, 0);
+  const isMulti = Array.isArray(beziers[0][0]);
+  const segments = isMulti ? beziers : [beziers];
+  const origin = segments[0][0];
 
-  // 分段采样并拼接，去重连接点
-  return beziers.flatMap((bezier, i) => {
-    const [P0, P1, P2, P3] = bezier;
-    const perSamples = samplesArray[i];
+  const isNumber = typeof samples === "number";
+  const samplesArray = segments.map((_, i) =>
+    isNumber ? samples : samples[i] ?? defaultSegmentSamples
+  );
+  const gCount = samplesArray.reduce((sum, s) => sum + s, 0);
+
+  return segments.flatMap((seg, i) => {
+    const [P0, P1, P2, P3] = seg;
+    const segmentSamples = samplesArray[i];
     const dedupe = i !== 0;
-    const gIdx = samplesArray.slice(0, i).reduce((sum, segs) => sum + segs, 0);
-    return getBezierPoints(P0, P1, P2, P3, perSamples, {
+    const gIdx = samplesArray.slice(0, i).reduce((sum, s) => sum + s, 0);
+    return sampleSingleBezier(P0, P1, P2, P3, segmentSamples, {
       origin,
       dedupe,
       gIdx,
@@ -175,24 +195,37 @@ export function getMultiBezierPoints(
   });
 }
 
-// 将 Bézier 采样点转换为时间 + 值（支持扰动、归一化 relY 映射为 value）
-function mapPointsToTimedValues(points, options = {}) {
+function getTimedValuesFromSampledBezierPoints(points, options = {}) {
   const {
     valueMin = 1,
     valueMax = 50,
     valueJitter = 0.3,
     intervalMs = 100,
     intervalJitter = 0.2,
+    normMode = "relNormY", // normX, relNormX, normY, relNormY
   } = options;
-
-  const maxAbsRelY = Math.max(...points.map((p) => Math.abs(p.relY))) || 1;
 
   return points.map((p, i) => {
     const baseTime = i * intervalMs;
     const jitterTime = intervalMs * intervalJitter * (Math.random() * 2 - 1);
     const time = Math.max(0, Math.round(baseTime + jitterTime));
 
-    const norm = Math.abs(p.relY) / maxAbsRelY;
+    let norm;
+    switch (normMode) {
+      case "normX":
+        norm = p.normX;
+        break;
+      case "relNormX":
+        norm = p.relNormX;
+        break;
+      case "normY":
+        norm = p.normY;
+        break;
+      case "relNormY":
+      default:
+        norm = p.relNormY;
+        break;
+    }
     const baseValue = norm * (valueMax - valueMin) + valueMin;
     const jitterValue = baseValue * valueJitter * (Math.random() * 2 - 1);
     const value = Math.max(valueMin, Math.round(baseValue + jitterValue));
@@ -201,28 +234,9 @@ function mapPointsToTimedValues(points, options = {}) {
   });
 }
 
-// 单段 Bézier 曲线生成时间-值点
-export function generateBezierTimedValues(
-  P0,
-  P1,
-  P2,
-  P3,
-  segments,
-  options = {}
-) {
-  if (segments < 1 || !Number.isInteger(segments)) return [];
-  const points = getBezierPoints(P0, P1, P2, P3, segments);
-  return mapPointsToTimedValues(points, options);
-}
-
-// 多段 Bézier 曲线生成连续时间-值点
-export function generateMultiBezierTimedValues(
-  bezierSegments,
-  segmentsPerCurve,
-  options = {}
-) {
-  const points = getMultiBezierPoints(bezierSegments, segmentsPerCurve);
-  return mapPointsToTimedValues(points, options);
+export function sampleBezierTimedValues(beziers, segments, options = {}) {
+  const points = sampleBezierPoints(beziers, segments, options);
+  return getTimedValuesFromSampledBezierPoints(points, options);
 }
 
 // 更新首尾相连 Bézier 曲线中某个点的坐标，并自动调整相邻控制点
