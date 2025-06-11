@@ -3,7 +3,7 @@ function safeDiv(a, b) {
   return b === 0 ? 0 : a / b;
 }
 
-// 计算对称点
+// 计算点 p 相对于锚点 anchor 的镜像点（对称点）
 function mirrorPoint(p, anchor) {
   return {
     x: anchor.x * 2 - p.x,
@@ -11,10 +11,12 @@ function mirrorPoint(p, anchor) {
   };
 }
 
+// 计算一组点（支持嵌套）在 x/y 维度上的边界和范围信息
 function getPointsBounds(points) {
-  const flatPoints = points.flat();
-  const allX = flatPoints.map((p) => p.x);
-  const allY = flatPoints.map((p) => p.y);
+  // 将所有点展平成一个数组（支持二维嵌套）
+  const flatPoints = points.flat(Infinity);
+  const allX = flatPoints.map((p) => p.x); // 提取所有 x 坐标
+  const allY = flatPoints.map((p) => p.y); // 提取所有 y 坐标
 
   const isSegmented = Array.isArray(points[0]);
   const minX = Math.min(...allX);
@@ -39,6 +41,7 @@ function getPointsBounds(points) {
   };
 }
 
+// 根据 bounds 计算画布缩放比例和边距偏移
 function getCanvasScaleFromBounds(
   width,
   height,
@@ -63,7 +66,7 @@ function getCanvasScaleFromBounds(
   };
 }
 
-// 计算三次 Bézier 曲线在 t 时刻对应的点
+// 使用三次 Bézier 曲线公式计算给定 t 值对应的点
 function evaluateBezier(P0, P1, P2, P3, t) {
   const x =
     (1 - t) ** 3 * P0.x +
@@ -80,7 +83,7 @@ function evaluateBezier(P0, P1, P2, P3, t) {
   return { x, y };
 }
 
-// 生成单段 Bézier 曲线的采样点
+// 采样单段 Bézier 曲线上的多个点，并计算每个点的归一化与相对信息
 function sampleSingleBezier(P0, P1, P2, P3, samples, options = {}) {
   const { origin = P0, gIdx = 0, gCount = samples } = options;
   const dedupe = gIdx > 0;
@@ -90,111 +93,36 @@ function sampleSingleBezier(P0, P1, P2, P3, samples, options = {}) {
   let [minX, maxX, maxAbsRelX, minY, maxY, maxAbsRelY] = [0, 0, 0, 0, 0, 0];
   for (let i = 0; i < totalSamples; i++) {
     if (dedupe && i === 0) continue;
-    // progress
-    const localIndex = gIdx + dedupe ? i - 1 : i;
-    const progress = safeDiv(localIndex, gCount - 1);
-    // x, y
-    const t = safeDiv(i, totalSamples - 1);
-    const { x, y } = evaluateBezier(P0, P1, P2, P3, t, { origin });
-    // relX, relY
+    const localIndex = dedupe ? i - 1 : i;
+    const progress = safeDiv(gIdx + localIndex, gCount - 1);
+    const t = safeDiv(i, totalSamples - 1); // 归一化当前样本在曲线中的位置
+    const { x, y } = evaluateBezier(P0, P1, P2, P3, t); // 计算曲线点位置
     const relX = x - origin.x;
     const relY = origin.y - y;
 
-    // minY, maxY, maxAbsRelY
-    minX = x < minX ? x : minX;
-    maxX = y > maxX ? x : maxX;
-    maxAbsRelX = Math.abs(relX) > maxAbsRelX ? Math.abs(relX) : maxAbsRelX;
-    minY = y < minY ? y : minY;
-    maxY = y > maxY ? y : maxY;
-    maxAbsRelY = Math.abs(relY) > maxAbsRelY ? Math.abs(relY) : maxAbsRelY;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    maxAbsRelX = Math.max(maxAbsRelX, Math.abs(relX));
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+    maxAbsRelY = Math.max(maxAbsRelY, Math.abs(relY));
 
     points.push({ progress, x, y, relX, relY });
   }
 
+  const rangeX = maxX - minX;
   const rangeY = maxY - minY;
+
   return points.map((p) => {
     const normX = safeDiv(p.x - minX, rangeX);
     const relNormX = safeDiv(p.relX, maxAbsRelX);
     const normY = safeDiv(p.y - minY, rangeY);
     const relNormY = safeDiv(p.relY, maxAbsRelY);
-    return {
-      ...p,
-      normX,
-      relNormX,
-      normY,
-      relNormY,
-    };
+    return { ...p, normX, relNormX, normY, relNormY };
   });
 }
 
-export function normalizePoints(points) {
-  const { isSegmented, minX, minY, maxRange } = getPointsBounds(points);
-  const normalize = (p) => ({
-    ...p,
-    x: safeDiv(p.x - minX, maxRange),
-    y: safeDiv(p.y - minY, maxRange),
-  });
-
-  return isSegmented
-    ? points.map((segment) => segment.map(normalize))
-    : points.map(normalize);
-}
-
-export function mapPointsToCanvas(
-  points,
-  canvasWidth,
-  canvasHeight,
-  marginRatio = 0.05
-) {
-  const bounds = getPointsBounds(points);
-  const { isSegmented, minX, minY } = bounds;
-  const { minScale, marginX, marginY } = getCanvasScaleFromBounds(
-    canvasWidth,
-    canvasHeight,
-    bounds,
-    { marginRatio }
-  );
-
-  const project = (p) => ({
-    ...p,
-    x: marginX + (p.x - minX) * minScale,
-    y: marginY + (p.y - minY) * minScale,
-  });
-
-  return isSegmented
-    ? points.map((segment) => segment.map(project))
-    : points.map(project);
-}
-
-export function sampleBezierPoints(
-  beziers,
-  samples,
-  { defaultSegmentSamples = 10 } = {}
-) {
-  const isMulti = Array.isArray(beziers[0][0]);
-  const segments = isMulti ? beziers : [beziers];
-  const origin = segments[0][0];
-
-  const isNumber = typeof samples === "number";
-  const samplesArray = segments.map((_, i) =>
-    isNumber ? samples : samples[i] ?? defaultSegmentSamples
-  );
-  const gCount = samplesArray.reduce((sum, s) => sum + s, 0);
-
-  return segments.flatMap((seg, i) => {
-    const [P0, P1, P2, P3] = seg;
-    const segmentSamples = samplesArray[i];
-    const dedupe = i !== 0;
-    const gIdx = samplesArray.slice(0, i).reduce((sum, s) => sum + s, 0);
-    return sampleSingleBezier(P0, P1, P2, P3, segmentSamples, {
-      origin,
-      dedupe,
-      gIdx,
-      gCount,
-    });
-  });
-}
-
+// 将曲线采样点映射为包含时间和值的序列（用于节奏控制、动画等）
 function getTimedValuesFromSampledBezierPoints(points, options = {}) {
   const {
     valueMin = 1,
@@ -202,7 +130,7 @@ function getTimedValuesFromSampledBezierPoints(points, options = {}) {
     valueJitter = 0.3,
     intervalMs = 100,
     intervalJitter = 0.2,
-    normMode = "relNormY", // normX, relNormX, normY, relNormY
+    normMode = "relNormY",
   } = options;
 
   return points.map((p, i) => {
@@ -210,7 +138,7 @@ function getTimedValuesFromSampledBezierPoints(points, options = {}) {
     const jitterTime = intervalMs * intervalJitter * (Math.random() * 2 - 1);
     const time = Math.max(0, Math.round(baseTime + jitterTime));
 
-    let norm;
+    let norm; // 根据配置选择使用哪种归一化值
     switch (normMode) {
       case "normX":
         norm = p.normX;
@@ -226,6 +154,7 @@ function getTimedValuesFromSampledBezierPoints(points, options = {}) {
         norm = p.relNormY;
         break;
     }
+
     const baseValue = norm * (valueMax - valueMin) + valueMin;
     const jitterValue = baseValue * valueJitter * (Math.random() * 2 - 1);
     const value = Math.max(valueMin, Math.round(baseValue + jitterValue));
@@ -234,205 +163,260 @@ function getTimedValuesFromSampledBezierPoints(points, options = {}) {
   });
 }
 
+// 将点归一化到 0~1 空间（整体缩放）
+export function normalizePoints(points) {
+  const { isSegmented, minX, minY, maxRange } = getPointsBounds(points);
+  const normalize = (p) => ({
+    ...p,
+    x: safeDiv(p.x - minX, maxRange),
+    y: safeDiv(p.y - minY, maxRange),
+  });
+
+  return isSegmented
+    ? points.map((segment) => segment.map(normalize))
+    : points.map(normalize);
+}
+
+
+export function mapPointsToCanvas(
+  points,
+  canvasWidth,
+  canvasHeight,
+  {
+    marginRatio = 0.05,
+    coordSystem = "canvas", // 坐标系 'canvas' 或 'math'
+  } = {}
+) {
+  const bounds = getPointsBounds(points);
+  const { isSegmented, minX, minY, maxY } = bounds;
+  const { minScale, marginX, marginY } = getCanvasScaleFromBounds(
+    canvasWidth,
+    canvasHeight,
+    bounds,
+    { marginRatio }
+  );
+
+  const project = (p) => {
+    const scaledX = (p.x - minX) * minScale;
+    const scaledY =
+      coordSystem === "canvas"
+        ? (p.y - minY) * minScale // canvas 坐标系：正常
+        : (maxY - p.y) * minScale; // math 坐标系：Y 反转
+
+    const offsetX =
+      marginX + (canvasWidth - 2 * marginX - bounds.rangeX * minScale) / 2;
+    const offsetY =
+      marginY + (canvasHeight - 2 * marginY - bounds.rangeY * minScale) / 2;
+
+    return {
+      ...p,
+      x: offsetX + scaledX,
+      y: offsetY + scaledY,
+    };
+  };
+
+  return isSegmented
+    ? points.map((segment) => segment.map(project))
+    : points.map(project);
+}
+
+// 对多个 Bézier 曲线段采样，并合并点数据
+export function sampleBezierPoints(
+  beziers,
+  samples,
+  { defaultSegmentSamples = 10 } = {}
+) {
+  const isMulti = Array.isArray(beziers[0]);
+  const segments = isMulti ? beziers : [beziers];
+  const origin = segments[0][0];
+
+  const isNumber = typeof samples === "number";
+  let gCount = 0;
+  const samplesArray = segments.map((_, i) => {
+    const segmentSamples = isNumber
+      ? samples
+      : samples[i] ?? defaultSegmentSamples;
+    gCount += segmentSamples;
+    return segmentSamples;
+  });
+
+  return segments.flatMap((seg, i) => {
+    const [P0, P1, P2, P3] = seg;
+    const segmentSamples = samplesArray[i];
+    const dedupe = i !== 0;
+    const gIdx = samplesArray.slice(0, i).reduce((sum, s) => sum + s, 0);
+    return sampleSingleBezier(P0, P1, P2, P3, segmentSamples, {
+      origin,
+      dedupe,
+      gIdx,
+      gCount,
+    });
+  });
+}
+
+// 综合采样 Bézier 并生成时间值序列
 export function sampleBezierTimedValues(beziers, segments, options = {}) {
   const points = sampleBezierPoints(beziers, segments, options);
   return getTimedValuesFromSampledBezierPoints(points, options);
 }
 
-// 更新首尾相连 Bézier 曲线中某个点的坐标，并自动调整相邻控制点
+// 更新 Bézier 段中某个点的位置，并自动调整相邻控制点，保持平滑连接
 export function updateLinkedBezierPoint(
   beziers,
   segmentIdx,
   pointIdx,
   newPoint
 ) {
-  // 深拷贝防止修改原数组（使用 JSON 方法替代 structuredClone 以兼容旧浏览器）
+  // 创建深拷贝以避免修改原始数据
   const updated = JSON.parse(JSON.stringify(beziers));
-  const current = updated[segmentIdx]; // 当前曲线段
+  const current = updated[segmentIdx];
+
+  // 计算位移差值
   const dx = newPoint.x - current[pointIdx].x;
   const dy = newPoint.y - current[pointIdx].y;
 
-  // 更新当前目标点
-  current[pointIdx] = { ...newPoint };
+  // 应用新的坐标到目标点
+  current[pointIdx] = { ...current[pointIdx], ...newPoint };
 
-  // 同步更新相邻控制点，保持曲线连续与平滑
+  // === 以下根据点的位置更新相关控制点 ===
 
-  // 若更新的是 p0：
-  // - 向量方向相同地移动 p1
-  // - 同步更新上一段的 p3 = 当前 p0
-  // - 上一段的 p2 镜像自当前 p1 关于 p0
   if (pointIdx === 0) {
+    // 拖动的是起点 P0：连带移动控制点 P1，同步上一段的终点 P3 = P0，控制点 P2 镜像
     const p0 = current[pointIdx];
     const p1 = current[pointIdx + 1];
-    const movedP1 = (current[pointIdx + 1] = { x: p1.x + dx, y: p1.y + dy });
+    const movedP1 = (current[pointIdx + 1] = {
+      ...current[pointIdx + 1],
+      x: p1.x + dx,
+      y: p1.y + dy,
+    });
     const prev = updated[segmentIdx - 1];
     if (prev) {
-      prev[3] = { ...p0 };
-      prev[2] = mirrorPoint(movedP1, p0);
+      prev[3] = { ...prev[3], x: p0.x, y: p0.y }; // 连接处同步
+      prev[2] = { ...prev[2], ...mirrorPoint(movedP1, p0) }; // 保持控制对称性
     }
-  }
-  // 若更新的是 p1：
-  // - 上一段的 p2 镜像自当前 p1 关于 p0
-  else if (pointIdx === 1) {
+  } else if (pointIdx === 1) {
+    // 拖动的是控制点 P1：更新上一段的控制点 P2 镜像
     const p1 = current[pointIdx];
     const p0 = current[pointIdx - 1];
     const prev = updated[segmentIdx - 1];
     if (prev) {
-      prev[2] = mirrorPoint(p1, p0);
+      prev[2] = { ...prev[2], ...mirrorPoint(p1, p0) };
     }
-  }
-  // 若更新的是 p2：
-  // - 下一段的 p1 镜像自当前 p2 关于 p3
-  else if (pointIdx === 2) {
+  } else if (pointIdx === 2) {
+    // 拖动的是控制点 P2：更新下一段的控制点 P1 镜像
     const p2 = current[pointIdx];
     const p3 = current[pointIdx + 1];
     const next = updated[segmentIdx + 1];
     if (next) {
-      next[1] = mirrorPoint(p2, p3);
+      next[1] = { ...next[1], ...mirrorPoint(p2, p3) };
     }
-  }
-  // 若更新的是 p3：
-  // - 向量方向相同地移动 p2
-  // - 同步更新下一段的 p0 = 当前 p3
-  // - 下一段的 p1 镜像自当前 p2 关于 p3
-  else if (pointIdx === 3) {
+  } else if (pointIdx === 3) {
+    // 拖动的是终点 P3：连带移动控制点 P2，同步下一段的起点 P0 = P3，控制点 P1 镜像
     const p3 = current[pointIdx];
     const p2 = current[pointIdx - 1];
-    const movedP2 = (current[pointIdx - 1] = { x: p2.x + dx, y: p2.y + dy });
+    const movedP2 = (current[pointIdx - 1] = {
+      ...current[pointIdx - 1],
+      x: p2.x + dx,
+      y: p2.y + dy,
+    });
     const next = updated[segmentIdx + 1];
     if (next) {
-      next[0] = { ...p3 };
-      next[1] = mirrorPoint(movedP2, p3);
+      next[0] = { ...next[0], x: p3.x, y: p3.y }; // 连接处同步
+      next[1] = { ...next[1], ...mirrorPoint(movedP2, p3) }; // 保持控制对称性
     }
   }
 
   return updated;
 }
 
-/**
- * 生成周期正弦波或余弦波的采样数据。
- *
- * @param {number} cycles - 完整周期数（例如 0.5 表示半个周期，2 表示两个周期）
- * @param {number} points - 采样点数量（将 [0,1] 等分为多少段）
- * @param {string} type - 波形类型：'sin' 或 'cos'
- * @param {number} amplitude - 振幅（输出 y 的最大值绝对值）
- * @param {number} offset - 垂直偏移量（用于调整基线）
- * @returns {Array<{progress: number, x: number, y: number}>} - 采样点数组
- *   - progress: 归一化进度（从 0 到 1）
- *   - x: 输入值（弧度，用于绘图时的横坐标）
- *   - y: 输出值（振幅值，y = amplitude × wave + offset）
- */
-export function generateWaveData(
-  cycles = 0.5,
-  points = 100,
-  type = "sin",
-  amplitude = 1,
-  offset = 0
-) {
-  // 如果不是支持的类型，提前返回空数组
-  if (!["sin", "cos"].includes(type)) return [];
+// 返回指定类型的贝塞尔曲线段（数学坐标），支持正弦、余弦和多种 easing 曲线
+// 支持的类型包括：
+// - "sin"：模拟正弦曲线
+// - "cos"：模拟余弦曲线
+// - "easeInOutSine"：缓入缓出，柔和自然
+// - "easeInOutQuad"：缓入缓出，速度变化更明显
+// - "easeInOutCubic"：缓入缓出（三次方）
+// - "easeOutCubic"：缓出（三次方）
+// - "easeInCubic"：缓入（三次方）
+export function getTrigBezier(type = "sin") {
+  if (type === "sin") {
+    return [
+      [
+        { x: 0, y: 0 },
+        { x: Math.PI / 3, y: 1 },
+        { x: 2 * Math.PI / 3, y: 1 },
+        { x: Math.PI, y: 0 },
+      ],
+      [
+        { x: Math.PI, y: 0 },
+        { x: 4 * Math.PI / 3, y: -1 },
+        { x: 5 * Math.PI / 3, y: -1 },
+        { x: 2 * Math.PI, y: 0 },
+      ],
+    ];
+  }
 
-  const data = [];
-  const oneCycle = Math.PI * 2;
+  if (type === "cos") {
+    return [
+      [
+        { x: 0, y: 1 },
+        { x: Math.PI / 3, y: 1 },
+        { x: 2 * Math.PI / 3, y: -1 },
+        { x: Math.PI, y: -1 },
+      ],
+      [
+        { x: Math.PI, y: -1 },
+        { x: 4 * Math.PI / 3, y: -1 },
+        { x: 5 * Math.PI / 3, y: 1 },
+        { x: 2 * Math.PI, y: 1 },
+      ],
+    ];
+  }
 
-  // 内置波形函数（标准化为 y ∈ [-1, 1]）
-  const builtinFuncs = {
-    sin: (progress) => Math.sin(oneCycle * cycles * progress),
-    cos: (progress) => Math.cos(oneCycle * cycles * progress),
+  const easing = {
+    easeInOutSine: [
+      [
+        { x: 0, y: 0 },
+        { x: 0.25, y: 0 },
+        { x: 0.75, y: 1 },
+        { x: 1, y: 1 },
+      ],
+    ],
+    easeInOutQuad: [
+      [
+        { x: 0, y: 0 },
+        { x: 0.5, y: 0 },
+        { x: 0.5, y: 1 },
+        { x: 1, y: 1 },
+      ],
+    ],
+    easeInOutCubic: [
+      [
+        { x: 0, y: 0 },
+        { x: 0.32, y: 0 },
+        { x: 0.68, y: 1 },
+        { x: 1, y: 1 },
+      ],
+    ],
+    easeOutCubic: [
+      [
+        { x: 0, y: 0 },
+        { x: 0.33, y: 0 },
+        { x: 0.67, y: 1 },
+        { x: 1, y: 1 },
+      ],
+    ],
+    easeInCubic: [
+      [
+        { x: 0, y: 0 },
+        { x: 0.33, y: 0 },
+        { x: 0.67, y: 0 },
+        { x: 1, y: 1 },
+      ],
+    ],
   };
 
-  // 校验类型
-  const func = builtinFuncs[type];
-  if (!func) {
-    console.warn(
-      `Unsupported easing type: "${type}". Supported types: ${Object.keys(
-        builtinFuncs
-      ).join(", ")}`
-    );
-    return [];
-  }
+  if (type in easing) return easing[type];
 
-  // 遍历采样点，生成数据
-  for (let i = 0; i < points; i++) {
-    const progress = i / (points - 1); // 归一化进度 ∈ [0, 1]
-    const x = oneCycle * cycles * progress; // 弧度值，适用于绘图时的 x 坐标
-    const raw = builtinFuncs[type](progress); // 原始波形输出 ∈ [-1, 1]
-    const y = amplitude * raw + offset; // 应用振幅与偏移，生成最终 y 值
-
-    data.push({ progress, x, y });
-  }
-
-  return data;
-}
-
-/**
- * 生成缓动（easing）函数的采样数据。
- *
- * @param {number} points - 采样点数量（通常为 100）
- * @param {string|function} type - 缓动类型字符串或自定义函数
- * @returns {Array<{progress: number, y: number}>} - 包含 progress 和缓动输出值 y 的数组
- */
-export function generateEasingData(points = 100, type = "easeInOutSine") {
-  const builtinFuncs = {
-    // 缓入缓出，柔和自然（常用）
-    easeInOutSine: (p) => -(Math.cos(Math.PI * p) - 1) / 2,
-
-    // 缓入缓出，速度变化比 Sine 更明显
-    easeInOutQuad: (p) =>
-      p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2,
-
-    // 缓入缓出（三次方）—— 开头结尾慢，中间快
-    easeInOutCubic: (p) =>
-      p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2,
-
-    // 缓入缓出（回拉感强）
-    easeInOutBack: (p) => {
-      const c1 = 1.70158;
-      const c2 = c1 * 1.525;
-      return p < 0.5
-        ? (Math.pow(2 * p, 2) * ((c2 + 1) * 2 * p - c2)) / 2
-        : (Math.pow(2 * p - 2, 2) * ((c2 + 1) * (p * 2 - 2) + c2) + 2) / 2;
-    },
-
-    // 缓入（三次方）—— 从静止开始加速
-    easeInCubic: (p) => p * p * p,
-
-    // 缓入（指数）—— 非常缓慢启动后迅速加速
-    easeInExpo: (p) => (p === 0 ? 0 : Math.pow(2, 10 * p - 10)),
-
-    // 缓入（略带反弹感）
-    easeInBack: (p) => {
-      const c1 = 1.70158;
-      return p * p * ((c1 + 1) * p - c1);
-    },
-
-    // 缓出（三次方）—— 迅速启动然后缓慢停止
-    easeOutCubic: (p) => 1 - Math.pow(1 - p, 3),
-
-    // 缓出（指数）—— 快速启动后迅速减速
-    easeOutExpo: (p) => (p === 1 ? 1 : 1 - Math.pow(2, -10 * p)),
-
-    // 缓出（略带反弹感）
-    easeOutBack: (p) => {
-      const c1 = 1.70158;
-      const c3 = c1 + 1;
-      return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
-    },
-  };
-
-  // 支持传入自定义 easing 函数
-  const func = typeof type === "function" ? type : builtinFuncs[type];
-  if (!func) {
-    console.warn(`Unsupported easing type: "${type}".`);
-    return [];
-  }
-
-  const data = [];
-  for (let i = 0; i < points; i++) {
-    const progress = i / (points - 1);
-    const y = func(progress);
-    data.push({ progress, y });
-  }
-
-  return data;
+  throw new Error(`Unsupported type: ${type}`);
 }

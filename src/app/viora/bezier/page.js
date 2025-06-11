@@ -1,52 +1,37 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
 import {
-  getPointsBounds,
+  sampleBezierPoints,
+  updateLinkedBezierPoint,
   mapPointsToCanvas,
-  getMultiBezierPoints,
-  updateLinkedBezierPoint
+  getTrigBezier,
 } from "@/app/viora/components/bezier";
+import { useRef, useState, useEffect, useMemo } from "react";
 
 export default function Rain2() {
   const canvasRef = useRef(null);
   const canvasWidth = 600;
   const canvasHeight = 400;
   const [segments, setSegments] = useState(10);
-  const [beziers, setBeziers] = useState([
-    [
-      { x: 0, y: 0 },
-      { x: 0.4, y: 1.2 },
-      { x: 0.6, y: 1.2 },
-      { x: 1, y: 0 }
-    ],
-    [
-      { x: 1, y: 0 },
-      { x: 1.4, y: -1.2 },
-      { x: 1.6, y: -1.2 },
-      { x: 2, y: 0 }
-    ]
-  ]);
 
-  const dragging = useRef({ segmentIdx: null, pointIdx: null });
-  const [samplePoints, setSamplePoints] = useState([]);
-
-  const bounds = useMemo(
-    () => getPointsBounds(beziers, { width: canvasWidth, height: canvasHeight, marginRatio: 0.05 }),
-    [beziers]
+  const [beziers, setBeziers] = useState(() =>
+    mapPointsToCanvas(getTrigBezier("easeInOutSine"), canvasWidth, canvasHeight, {
+      coordSystem: "math",
+    })
   );
 
-  const pixelCurves = useMemo(
-    () => mapPointsToCanvas(beziers, canvasWidth, canvasHeight, { bounds }),
-    [bounds]
+  const dragging = useRef({ segmentIdx: null, pointIdx: null });
+  const sampledBezierPoints = useMemo(
+    () => sampleBezierPoints(beziers, segments),
+    [beziers, segments]
   );
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
+    // background grid
     ctx.strokeStyle = "#eee";
     ctx.lineWidth = 1;
     for (let x = 0; x < canvasWidth; x += 50) {
@@ -62,10 +47,18 @@ export default function Rain2() {
       ctx.stroke();
     }
 
-    pixelCurves.forEach((points) => {
+    // draw curves and handles
+    beziers.forEach((points) => {
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
-      ctx.bezierCurveTo(points[1].x, points[1].y, points[2].x, points[2].y, points[3].x, points[3].y);
+      ctx.bezierCurveTo(
+        points[1].x,
+        points[1].y,
+        points[2].x,
+        points[2].y,
+        points[3].x,
+        points[3].y
+      );
       ctx.strokeStyle = "blue";
       ctx.lineWidth = 2;
       ctx.stroke();
@@ -88,26 +81,24 @@ export default function Rain2() {
       });
     });
 
-    const relPoints = getMultiBezierPoints(beziers, segments);
-    const normPoints = mapPointsToCanvas(relPoints.map(p => [{ x: p.x, y: p.y }]), canvasWidth, canvasHeight, { bounds });
+    // 已通过 useMemo 生成 sampledBezierPoints，无需再次计算
 
-    setSamplePoints(relPoints);
-    normPoints.forEach(([pt]) => {
+    sampledBezierPoints.forEach(({ x, y }) => {
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
       ctx.fillStyle = "green";
       ctx.fill();
     });
-  }, [beziers, segments, bounds, pixelCurves]);
+  }, [segments, beziers]);
 
   function onMouseDown(e) {
     const rect = canvasRef.current.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    for (let i = 0; i < pixelCurves.length; i++) {
+    for (let i = 0; i < beziers.length; i++) {
       for (let j = 0; j < 4; j++) {
-        const p = pixelCurves[i][j];
+        const p = beziers[i][j];
         if (Math.hypot(p.x - mx, p.y - my) < 10) {
           dragging.current = { segmentIdx: i, pointIdx: j };
           return;
@@ -124,20 +115,13 @@ export default function Rain2() {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    // 我们知道画布坐标是通过以下计算的
-    // canvasX = marginX + (x - minX) * minScale;
-    // canvasY = marginY + (y - minY) * minScale;
-    // 所以反算逻辑坐标应该是：
-    const newX = (mx - bounds.marginX) / bounds.minScale + bounds.minX;
-    const newY = (my - bounds.marginY) / bounds.minScale + bounds.minY;
+    const newX = mx;
+    const newY = my;
 
-    const updated = updateLinkedBezierPoint(
-      beziers,
-      segmentIdx,
-      pointIdx,
-      { x: newX, y: newY }
-    );
-
+    const updated = updateLinkedBezierPoint(beziers, segmentIdx, pointIdx, {
+      x: newX,
+      y: newY,
+    });
     setBeziers(updated);
   }
 
@@ -146,7 +130,7 @@ export default function Rain2() {
   }
 
   function copyToClipboard() {
-    navigator.clipboard.writeText(JSON.stringify(samplePoints, null, 2));
+    navigator.clipboard.writeText(JSON.stringify(sampledBezierPoints, null, 2));
   }
 
   return (
@@ -157,7 +141,9 @@ export default function Rain2() {
           type="number"
           value={segments}
           min={2}
-          onChange={(e) => setSegments(Math.max(2, parseInt(e.target.value) || 2))}
+          onChange={(e) =>
+            setSegments(Math.max(2, parseInt(e.target.value) || 2))
+          }
         />
       </div>
 
@@ -173,9 +159,21 @@ export default function Rain2() {
 
       <div style={{ marginTop: 10, fontFamily: "monospace" }}>
         <strong>Sampled Points:</strong>
-        <button onClick={copyToClipboard} style={{ marginLeft: 10 }}>Copy</button>
-        <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid #ccc", padding: 5, marginTop: 5 }}>
-          <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(samplePoints, null, 2)}</pre>
+        <button onClick={copyToClipboard} style={{ marginLeft: 10 }}>
+          Copy
+        </button>
+        <div
+          style={{
+            maxHeight: 200,
+            overflowY: "auto",
+            border: "1px solid #ccc",
+            padding: 5,
+            marginTop: 5,
+          }}
+        >
+          <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+            {JSON.stringify(sampledBezierPoints, null, 2)}
+          </pre>
         </div>
       </div>
     </div>
