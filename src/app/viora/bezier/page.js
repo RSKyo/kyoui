@@ -4,7 +4,7 @@ import {
   sampleBezierPoints,
   updateLinkedBezierPoint,
   mapPointsToCanvas,
-  getTrigBezier,
+  getBezierPreset,
 } from "@/app/viora/components/bezier";
 import { useRef, useState, useEffect, useMemo } from "react";
 
@@ -15,9 +15,7 @@ export default function Rain2() {
   const [segments, setSegments] = useState(10);
 
   const [beziers, setBeziers] = useState(() =>
-    mapPointsToCanvas(getTrigBezier("easeInOutSine"), canvasWidth, canvasHeight, {
-      coordSystem: "math",
-    })
+    mapPointsToCanvas(getBezierPreset("sin"), canvasWidth, canvasHeight)
   );
 
   const dragging = useRef({ segmentIdx: null, pointIdx: null });

@@ -84,82 +84,69 @@ function evaluateBezier(P0, P1, P2, P3, t) {
 }
 
 // 采样单段 Bézier 曲线上的多个点，并计算每个点的归一化与相对信息
-function sampleSingleBezier(P0, P1, P2, P3, samples, options = {}) {
-  const { origin = P0, gIdx = 0, gCount = samples } = options;
-  const dedupe = gIdx > 0;
-  const totalSamples = dedupe ? samples + 1 : samples;
+function sampleSingleBezier(
+  P0,
+  P1,
+  P2,
+  P3,
+  count,
+  { origin = P0, offset = 0, total = count } = {}
+) {
+  const skipFirst = offset > 0;
+  const denom = count - 1;
+  const totalDenom = total - 1;
 
-  const points = [];
-  let [minX, maxX, maxAbsRelX, minY, maxY, maxAbsRelY] = [0, 0, 0, 0, 0, 0];
-  for (let i = 0; i < totalSamples; i++) {
-    if (dedupe && i === 0) continue;
-    const localIndex = dedupe ? i - 1 : i;
-    const progress = safeDiv(gIdx + localIndex, gCount - 1);
-    const t = safeDiv(i, totalSamples - 1); // 归一化当前样本在曲线中的位置
-    const { x, y } = evaluateBezier(P0, P1, P2, P3, t); // 计算曲线点位置
-    const relX = x - origin.x;
-    const relY = origin.y - y;
+  const list = [];
+  let maxDX = 0,
+    maxDY = 0;
 
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    maxAbsRelX = Math.max(maxAbsRelX, Math.abs(relX));
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
-    maxAbsRelY = Math.max(maxAbsRelY, Math.abs(relY));
+  for (let i = skipFirst ? 1 : 0; i < count; i++) {
+    const local = skipFirst ? i - 1 : i;
+    const t = safeDiv(i, denom);
+    const progress = safeDiv(offset + local, totalDenom);
+    const { x, y } = evaluateBezier(P0, P1, P2, P3, t);
+    const dx = x - origin.x;
+    const dy = origin.y - y;
 
-    points.push({ progress, x, y, relX, relY });
+    maxDX = Math.max(maxDX, Math.abs(dx));
+    maxDY = Math.max(maxDY, Math.abs(dy));
+
+    list.push({ progress, x, y, dx, dy });
   }
 
-  const rangeX = maxX - minX;
-  const rangeY = maxY - minY;
-
-  return points.map((p) => {
-    const normX = safeDiv(p.x - minX, rangeX);
-    const relNormX = safeDiv(p.relX, maxAbsRelX);
-    const normY = safeDiv(p.y - minY, rangeY);
-    const relNormY = safeDiv(p.relY, maxAbsRelY);
-    return { ...p, normX, relNormX, normY, relNormY };
-  });
+  return list.map((p) => ({
+    progress: p.progress,
+    x: +p.x.toFixed(3),
+    y: +p.y.toFixed(3),
+    dx: +p.dx.toFixed(3),
+    dy: +p.dy.toFixed(3),
+    ndx: +safeDiv(p.dx, maxDX).toFixed(3),
+    ndy: +safeDiv(p.dy, maxDY).toFixed(3),
+  }));
 }
 
 // 将曲线采样点映射为包含时间和值的序列（用于节奏控制、动画等）
-function getTimedValuesFromSampledBezierPoints(points, options = {}) {
+function getTimedValues(points, opt = {}) {
   const {
     valueMin = 1,
     valueMax = 50,
     valueJitter = 0.3,
     intervalMs = 100,
     intervalJitter = 0.2,
-    normMode = "relNormY",
-  } = options;
+    normMode = "ndy", // default to relative normalized Y
+  } = opt;
 
   return points.map((p, i) => {
-    const baseTime = i * intervalMs;
-    const jitterTime = intervalMs * intervalJitter * (Math.random() * 2 - 1);
-    const time = Math.max(0, Math.round(baseTime + jitterTime));
+    const baseT = i * intervalMs;
+    const tJitter = intervalMs * intervalJitter * (Math.random() * 2 - 1);
+    const time = Math.max(0, Math.round(baseT + tJitter));
 
-    let norm; // 根据配置选择使用哪种归一化值
-    switch (normMode) {
-      case "normX":
-        norm = p.normX;
-        break;
-      case "relNormX":
-        norm = p.relNormX;
-        break;
-      case "normY":
-        norm = p.normY;
-        break;
-      case "relNormY":
-      default:
-        norm = p.relNormY;
-        break;
-    }
+    const norm = normMode === "ndy" ? p.ndy : p.ndx;
+    const baseV = norm * (valueMax - valueMin) + valueMin;
+    const vJitter = baseV * valueJitter * (Math.random() * 2 - 1);
+    const value = Math.max(valueMin, Math.round(baseV + vJitter));
 
-    const baseValue = norm * (valueMax - valueMin) + valueMin;
-    const jitterValue = baseValue * valueJitter * (Math.random() * 2 - 1);
-    const value = Math.max(valueMin, Math.round(baseValue + jitterValue));
-
-    return { progress: p.progress, time, value };
+    return { prog: p.prog, time, value };
   });
 }
 
@@ -177,18 +164,14 @@ export function normalizePoints(points) {
     : points.map(normalize);
 }
 
-
 export function mapPointsToCanvas(
   points,
   canvasWidth,
   canvasHeight,
-  {
-    marginRatio = 0.05,
-    coordSystem = "canvas", // 坐标系 'canvas' 或 'math'
-  } = {}
+  { marginRatio = 0.05 } = {}
 ) {
   const bounds = getPointsBounds(points);
-  const { isSegmented, minX, minY, maxY } = bounds;
+  const { isSegmented, minX, minY } = bounds;
   const { minScale, marginX, marginY } = getCanvasScaleFromBounds(
     canvasWidth,
     canvasHeight,
@@ -198,10 +181,7 @@ export function mapPointsToCanvas(
 
   const project = (p) => {
     const scaledX = (p.x - minX) * minScale;
-    const scaledY =
-      coordSystem === "canvas"
-        ? (p.y - minY) * minScale // canvas 坐标系：正常
-        : (maxY - p.y) * minScale; // math 坐标系：Y 反转
+    const scaledY = (p.y - minY) * minScale;
 
     const offsetX =
       marginX + (canvasWidth - 2 * marginX - bounds.rangeX * minScale) / 2;
@@ -227,29 +207,35 @@ export function sampleBezierPoints(
   { defaultSegmentSamples = 10 } = {}
 ) {
   const isMulti = Array.isArray(beziers[0]);
-  const segments = isMulti ? beziers : [beziers];
-  const origin = segments[0][0];
+  const segs = isMulti ? beziers : [beziers];
+  const origin = segs[0][0];
 
   const isNumber = typeof samples === "number";
-  let gCount = 0;
-  const samplesArray = segments.map((_, i) => {
-    const segmentSamples = isNumber
-      ? samples
-      : samples[i] ?? defaultSegmentSamples;
-    gCount += segmentSamples;
-    return segmentSamples;
-  });
+  const n = segs.length;
+  const counts = [];
+  const offsets = [0];
+  let total = 0;
 
-  return segments.flatMap((seg, i) => {
+  for (let i = 0; i < n; i++) {
+    const base = isNumber
+      ? Math.floor(samples / n)
+      : samples[i] ?? defaultSegmentSamples;
+    const visual = base + (n > 1 ? 1 : 0);
+    const logical = base + (i === 0 && n > 1 ? 1 : 0);
+
+    counts.push(visual);
+    total += logical;
+    offsets.push(total);
+  }
+
+  return segs.flatMap((seg, i) => {
     const [P0, P1, P2, P3] = seg;
-    const segmentSamples = samplesArray[i];
-    const dedupe = i !== 0;
-    const gIdx = samplesArray.slice(0, i).reduce((sum, s) => sum + s, 0);
-    return sampleSingleBezier(P0, P1, P2, P3, segmentSamples, {
+    const count = counts[i];
+    const offset = offsets[i];
+    return sampleSingleBezier(P0, P1, P2, P3, count, {
       origin,
-      dedupe,
-      gIdx,
-      gCount,
+      offset,
+      total,
     });
   });
 }
@@ -257,7 +243,7 @@ export function sampleBezierPoints(
 // 综合采样 Bézier 并生成时间值序列
 export function sampleBezierTimedValues(beziers, segments, options = {}) {
   const points = sampleBezierPoints(beziers, segments, options);
-  return getTimedValuesFromSampledBezierPoints(points, options);
+  return getTimedValues(points, options);
 }
 
 // 更新 Bézier 段中某个点的位置，并自动调整相邻控制点，保持平滑连接
@@ -329,94 +315,214 @@ export function updateLinkedBezierPoint(
   return updated;
 }
 
-// 返回指定类型的贝塞尔曲线段（数学坐标），支持正弦、余弦和多种 easing 曲线
-// 支持的类型包括：
-// - "sin"：模拟正弦曲线
-// - "cos"：模拟余弦曲线
-// - "easeInOutSine"：缓入缓出，柔和自然
-// - "easeInOutQuad"：缓入缓出，速度变化更明显
-// - "easeInOutCubic"：缓入缓出（三次方）
-// - "easeOutCubic"：缓出（三次方）
-// - "easeInCubic"：缓入（三次方）
-export function getTrigBezier(type = "sin") {
-  if (type === "sin") {
-    return [
-      [
-        { x: 0, y: 0 },
-        { x: Math.PI / 3, y: 1 },
-        { x: 2 * Math.PI / 3, y: 1 },
-        { x: Math.PI, y: 0 },
-      ],
-      [
-        { x: Math.PI, y: 0 },
-        { x: 4 * Math.PI / 3, y: -1 },
-        { x: 5 * Math.PI / 3, y: -1 },
-        { x: 2 * Math.PI, y: 0 },
-      ],
-    ];
-  }
-
-  if (type === "cos") {
-    return [
-      [
-        { x: 0, y: 1 },
-        { x: Math.PI / 3, y: 1 },
-        { x: 2 * Math.PI / 3, y: -1 },
-        { x: Math.PI, y: -1 },
-      ],
-      [
-        { x: Math.PI, y: -1 },
-        { x: 4 * Math.PI / 3, y: -1 },
-        { x: 5 * Math.PI / 3, y: 1 },
-        { x: 2 * Math.PI, y: 1 },
-      ],
-    ];
-  }
-
-  const easing = {
-    easeInOutSine: [
-      [
-        { x: 0, y: 0 },
-        { x: 0.25, y: 0 },
-        { x: 0.75, y: 1 },
-        { x: 1, y: 1 },
-      ],
-    ],
-    easeInOutQuad: [
-      [
-        { x: 0, y: 0 },
-        { x: 0.5, y: 0 },
-        { x: 0.5, y: 1 },
-        { x: 1, y: 1 },
-      ],
-    ],
-    easeInOutCubic: [
-      [
-        { x: 0, y: 0 },
-        { x: 0.32, y: 0 },
-        { x: 0.68, y: 1 },
-        { x: 1, y: 1 },
-      ],
-    ],
-    easeOutCubic: [
-      [
-        { x: 0, y: 0 },
-        { x: 0.33, y: 0 },
-        { x: 0.67, y: 1 },
-        { x: 1, y: 1 },
-      ],
-    ],
-    easeInCubic: [
-      [
-        { x: 0, y: 0 },
-        { x: 0.33, y: 0 },
-        { x: 0.67, y: 0 },
-        { x: 1, y: 1 },
-      ],
-    ],
-  };
-
-  if (type in easing) return easing[type];
-
+export function getBezierPreset(type = "sin") {
+  if (type in mathCurves)
+    return convertMathToCanvasCoords(mathCurves[type].curves);
   throw new Error(`Unsupported type: ${type}`);
 }
+
+export function convertMathToCanvasCoords(beziers) {
+  const isSegmented = Array.isArray(beziers[0]);
+  let maxY = -Infinity;
+  let minX = Infinity;
+
+  const points = beziers.flat(Infinity);
+  for (const { x, y } of points) {
+    if (y > maxY) maxY = y;
+    if (x < minX) minX = x;
+  }
+
+  const project = (p) => ({
+    ...p,
+    x: p.x - minX,
+    y: maxY - p.y,
+  });
+
+  return isSegmented
+    ? beziers.map((segment) => segment.map(project))
+    : beziers.map(project);
+}
+
+export const mathCurves = {
+  sin: {
+    curves: [
+      [
+        { x: 0.0, y: 0.5 },
+        { x: 0.167, y: 1.0 },
+        { x: 0.333, y: 1.0 },
+        { x: 0.5, y: 0.5 },
+      ],
+      [
+        { x: 0.5, y: 0.5 },
+        { x: 0.667, y: 0.0 },
+        { x: 0.833, y: 0.0 },
+        { x: 1.0, y: 0.5 },
+      ],
+    ],
+    label: "正弦曲线",
+    type: "math",
+    desc: "正弦函数，用两段贝塞尔拟合 y = sin(x)，将 x ∈ [0, 2π] 和 y ∈ [-1, 1] 比例归一化到 [0, 1]，保持波形纵横比",
+  },
+  cos: {
+    curves: [
+      [
+        { x: 0.0, y: 1.0 },
+        { x: 0.167, y: 1.0 },
+        { x: 0.333, y: 0.0 },
+        { x: 0.5, y: 0.0 },
+      ],
+      [
+        { x: 0.5, y: 0.0 },
+        { x: 0.667, y: 0.0 },
+        { x: 0.833, y: 1.0 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "余弦曲线",
+    type: "math",
+    desc: "余弦函数，用两段贝塞尔拟合 y = cos(x)，将 x ∈ [0, 2π] 和 y ∈ [-1, 1] 比例归一化到 [0, 1]，保持波形纵横比",
+  },
+  easeInSine: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.47, y: 0.0 },
+        { x: 0.745, y: 0.715 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "缓入正弦",
+    type: "easing",
+    desc: "缓动开始，随时间加速（正弦前四分之一周期）",
+  },
+  easeOutSine: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.39, y: 0.575 },
+        { x: 0.565, y: 1.0 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "缓出正弦",
+    type: "easing",
+    desc: "快速开始，随时间减速（正弦后四分之一周期）",
+  },
+  easeInOutSine: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.445, y: 0.05 },
+        { x: 0.55, y: 0.95 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "缓入缓出正弦",
+    type: "easing",
+    desc: "缓动开始与结束，中间加速（正弦半周期）",
+  },
+  linear: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.25, y: 0.25 },
+        { x: 0.75, y: 0.75 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "线性",
+    type: "easing",
+    desc: "线性过渡，匀速运动",
+  },
+  easeInQuad: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.55, y: 0.085 },
+        { x: 0.68, y: 0.53 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "缓入二次",
+    type: "easing",
+    desc: "缓动开始，渐进加速（二次方缓动）",
+  },
+  easeOutQuad: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.25, y: 0.46 },
+        { x: 0.45, y: 0.94 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "缓出二次",
+    type: "easing",
+    desc: "快速开始，缓慢结束（二次方缓动）",
+  },
+  easeInOutQuad: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.455, y: 0.03 },
+        { x: 0.515, y: 0.955 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "缓入缓出二次",
+    type: "easing",
+    desc: "缓动开始与结束，中间快速（二次方缓动）",
+  },
+  easeInCubic: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.55, y: 0.055 },
+        { x: 0.675, y: 0.19 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "缓入三次",
+    type: "easing",
+    desc: "三次缓动开始，缓慢进场更自然",
+  },
+  easeOutCubic: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.215, y: 0.61 },
+        { x: 0.355, y: 1.0 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "缓出三次",
+    type: "easing",
+    desc: "三次缓动结束，自然减速退出",
+  },
+  easeInOutCubic: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.645, y: 0.045 },
+        { x: 0.355, y: 1.0 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "缓入缓出三次",
+    type: "easing",
+    desc: "三次缓动，两端平滑，中间加速",
+  },
+  easeOutBack: {
+    curves: [
+      [
+        { x: 0.0, y: 0.0 },
+        { x: 0.34, y: 1.56 },
+        { x: 0.64, y: 1.0 },
+        { x: 1.0, y: 1.0 },
+      ],
+    ],
+    label: "回弹缓出",
+    type: "easing",
+    desc: "回弹效果，超出后回落到目标值",
+  },
+};
