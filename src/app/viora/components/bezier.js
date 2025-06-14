@@ -1,9 +1,7 @@
-// 安全除法函数，避免除数为 0 导致 NaN 或 Infinity
-function safeDiv(a, b) {
-  return b === 0 ? 0 : a / b;
+function safeDiv(a, b, fixed = 3) {
+  return b === 0 ? 0 : +(a / b).toFixed(fixed);
 }
 
-// 计算点 p 相对于锚点 anchor 的镜像点（对称点）
 function mirrorPoint(p, anchor) {
   return {
     x: anchor.x * 2 - p.x,
@@ -11,196 +9,47 @@ function mirrorPoint(p, anchor) {
   };
 }
 
-// 计算一组点（支持嵌套）在 x/y 维度上的边界和范围信息
-function getPointsBounds(points) {
-  // 将所有点展平成一个数组（支持二维嵌套）
-  const flatPoints = points.flat(Infinity);
-  const allX = flatPoints.map((p) => p.x); // 提取所有 x 坐标
-  const allY = flatPoints.map((p) => p.y); // 提取所有 y 坐标
+function evaluateBezier(p0, p1, p2, p3, t, fixed = 3) {
+  const u = 1 - t;
+  const tt = t * t;
+  const uu = u * u;
+  const uuu = uu * u;
+  const ttt = tt * t;
 
-  const isSegmented = Array.isArray(points[0]);
-  const minX = Math.min(...allX);
-  const maxX = Math.max(...allX);
-  const minY = Math.min(...allY);
-  const maxY = Math.max(...allY);
-  const rangeX = maxX - minX || 1;
-  const rangeY = maxY - minY || 1;
-  const minRange = Math.max(rangeX, rangeY) || 1;
-  const maxRange = Math.max(rangeX, rangeY) || 1;
+  const x = +(
+    uuu * p0.x +
+    3 * uu * t * p1.x +
+    3 * u * tt * p2.x +
+    ttt * p3.x
+  ).toFixed(fixed);
 
-  return {
-    isSegmented,
-    minX,
-    maxX,
-    minY,
-    maxY,
-    rangeX,
-    rangeY,
-    minRange,
-    maxRange,
-  };
-}
-
-// 根据 bounds 计算画布缩放比例和边距偏移
-function getCanvasScaleFromBounds(
-  width,
-  height,
-  bounds,
-  { marginRatio = 0 } = {}
-) {
-  const { rangeX, rangeY } = bounds;
-  const scaleX = (width * (1 - 2 * marginRatio)) / rangeX;
-  const scaleY = (height * (1 - 2 * marginRatio)) / rangeY;
-  const minScale = Math.min(scaleX, scaleY);
-  const maxScale = Math.max(scaleX, scaleY);
-  const marginX = width * marginRatio;
-  const marginY = height * marginRatio;
-
-  return {
-    scaleX,
-    scaleY,
-    minScale,
-    maxScale,
-    marginX,
-    marginY,
-  };
-}
-
-// 使用三次 Bézier 曲线公式计算给定 t 值对应的点
-function evaluateBezier(P0, P1, P2, P3, t) {
-  const x =
-    (1 - t) ** 3 * P0.x +
-    3 * (1 - t) ** 2 * t * P1.x +
-    3 * (1 - t) * t ** 2 * P2.x +
-    t ** 3 * P3.x;
-
-  const y =
-    (1 - t) ** 3 * P0.y +
-    3 * (1 - t) ** 2 * t * P1.y +
-    3 * (1 - t) * t ** 2 * P2.y +
-    t ** 3 * P3.y;
+  const y = +(
+    uuu * p0.y +
+    3 * uu * t * p1.y +
+    3 * u * tt * p2.y +
+    ttt * p3.y
+  ).toFixed(fixed);
 
   return { x, y };
 }
 
-// 采样单段 Bézier 曲线上的多个点，并计算每个点的归一化与相对信息
-function sampleSingleBezier(
-  P0,
-  P1,
-  P2,
-  P3,
-  count,
-  { origin = P0, offset = 0, total = count } = {}
-) {
-  const skipFirst = offset > 0;
+function sampleBezier(p0, p1, p2, p3, count, options = {}) {
+  const { origin = p0, offset = 0, total = count, fixed = 3 } = options;
+  const skip = offset > 0 ? 1 : 0;
   const denom = count - 1;
   const totalDenom = total - 1;
 
-  const list = [];
-  let maxDX = 0,
-    maxDY = 0;
-
-  for (let i = skipFirst ? 1 : 0; i < count; i++) {
-    const local = skipFirst ? i - 1 : i;
-    const t = safeDiv(i, denom);
-    const progress = safeDiv(offset + local, totalDenom);
-    const { x, y } = evaluateBezier(P0, P1, P2, P3, t);
+  return Array.from({ length: count - skip }, (_, i) => {
+    const t = safeDiv(i + skip, denom);
+    const progress = safeDiv(offset + i, totalDenom);
+    const { x, y } = evaluateBezier(p0, p1, p2, p3, t, fixed);
     const dx = x - origin.x;
     const dy = origin.y - y;
 
-    maxDX = Math.max(maxDX, Math.abs(dx));
-    maxDY = Math.max(maxDY, Math.abs(dy));
-
-    list.push({ progress, x, y, dx, dy });
-  }
-
-  return list.map((p) => ({
-    progress: p.progress,
-    x: +p.x.toFixed(3),
-    y: +p.y.toFixed(3),
-    dx: +p.dx.toFixed(3),
-    dy: +p.dy.toFixed(3),
-    ndx: +safeDiv(p.dx, maxDX).toFixed(3),
-    ndy: +safeDiv(p.dy, maxDY).toFixed(3),
-  }));
-}
-
-// 将曲线采样点映射为包含时间和值的序列（用于节奏控制、动画等）
-function getTimedValues(points, opt = {}) {
-  const {
-    valueMin = 1,
-    valueMax = 50,
-    valueJitter = 0.3,
-    intervalMs = 100,
-    intervalJitter = 0.2,
-    normMode = "ndy", // default to relative normalized Y
-  } = opt;
-
-  return points.map((p, i) => {
-    const baseT = i * intervalMs;
-    const tJitter = intervalMs * intervalJitter * (Math.random() * 2 - 1);
-    const time = Math.max(0, Math.round(baseT + tJitter));
-
-    const norm = normMode === "ndy" ? p.ndy : p.ndx;
-    const baseV = norm * (valueMax - valueMin) + valueMin;
-    const vJitter = baseV * valueJitter * (Math.random() * 2 - 1);
-    const value = Math.max(valueMin, Math.round(baseV + vJitter));
-
-    return { prog: p.prog, time, value };
+    return { progress, x, y, dx, dy };
   });
 }
 
-// 将点归一化到 0~1 空间（整体缩放）
-export function normalizePoints(points) {
-  const { isSegmented, minX, minY, maxRange } = getPointsBounds(points);
-  const normalize = (p) => ({
-    ...p,
-    x: safeDiv(p.x - minX, maxRange),
-    y: safeDiv(p.y - minY, maxRange),
-  });
-
-  return isSegmented
-    ? points.map((segment) => segment.map(normalize))
-    : points.map(normalize);
-}
-
-export function mapPointsToCanvas(
-  points,
-  canvasWidth,
-  canvasHeight,
-  { marginRatio = 0.05 } = {}
-) {
-  const bounds = getPointsBounds(points);
-  const { isSegmented, minX, minY } = bounds;
-  const { minScale, marginX, marginY } = getCanvasScaleFromBounds(
-    canvasWidth,
-    canvasHeight,
-    bounds,
-    { marginRatio }
-  );
-
-  const project = (p) => {
-    const scaledX = (p.x - minX) * minScale;
-    const scaledY = (p.y - minY) * minScale;
-
-    const offsetX =
-      marginX + (canvasWidth - 2 * marginX - bounds.rangeX * minScale) / 2;
-    const offsetY =
-      marginY + (canvasHeight - 2 * marginY - bounds.rangeY * minScale) / 2;
-
-    return {
-      ...p,
-      x: offsetX + scaledX,
-      y: offsetY + scaledY,
-    };
-  };
-
-  return isSegmented
-    ? points.map((segment) => segment.map(project))
-    : points.map(project);
-}
-
-// 对多个 Bézier 曲线段采样，并合并点数据
 export function sampleBezierPoints(
   beziers,
   samples,
@@ -232,7 +81,7 @@ export function sampleBezierPoints(
     const [P0, P1, P2, P3] = seg;
     const count = counts[i];
     const offset = offsets[i];
-    return sampleSingleBezier(P0, P1, P2, P3, count, {
+    return sampleBezier(P0, P1, P2, P3, count, {
       origin,
       offset,
       total,
@@ -240,13 +89,40 @@ export function sampleBezierPoints(
   });
 }
 
-// 综合采样 Bézier 并生成时间值序列
 export function sampleBezierTimedValues(beziers, segments, options = {}) {
-  const points = sampleBezierPoints(beziers, segments, options);
-  return getTimedValues(points, options);
+  const {
+    minValue = 1,
+    maxValue = 50,
+    valueJitterRatio = 0.3,
+    interval = 100,
+    intervalJitterRatio = 0.2,
+    direct = "y",
+    defaultSegmentSamples = 10,
+    fixed = 3,
+  } = options;
+
+  const points = sampleBezierPoints(beziers, segments, {
+    defaultSegmentSamples,
+  });
+
+  const key = direct === "y" ? "dy" : "dx";
+  const max = Math.max(...points.map((p) => Math.abs(p[key])));
+  const randJitter = (r) => r * (Math.random() * 2 - 1);
+  const dv = maxValue - minValue;
+
+  return points.map((p, i) => {
+    const valueBase = minValue + dv * safeDiv(p[key], max, fixed);
+    const jitteredValue = valueBase * (1 + randJitter(valueJitterRatio));
+    const value = Math.max(minValue, Math.round(jitteredValue));
+
+    const timeBase = i * interval;
+    const jitteredTime = timeBase + interval * randJitter(intervalJitterRatio);
+    const time = Math.max(0, Math.round(jitteredTime));
+
+    return { progress: p.progress, time, value };
+  });
 }
 
-// 更新 Bézier 段中某个点的位置，并自动调整相邻控制点，保持平滑连接
 export function updateLinkedBezierPoint(
   beziers,
   segmentIdx,
@@ -263,8 +139,6 @@ export function updateLinkedBezierPoint(
 
   // 应用新的坐标到目标点
   current[pointIdx] = { ...current[pointIdx], ...newPoint };
-
-  // === 以下根据点的位置更新相关控制点 ===
 
   if (pointIdx === 0) {
     // 拖动的是起点 P0：连带移动控制点 P1，同步上一段的终点 P3 = P0，控制点 P2 镜像
