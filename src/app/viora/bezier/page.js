@@ -2,20 +2,23 @@
 
 import {
   sampleBezierPoints,
-  updateLinkedBezierPoint,
-  mapPointsToCanvas,
-  getBezierPreset,
+  updateBezier,
 } from "@/app/viora/components/bezier";
-import { useRef, useState, useEffect, useMemo } from "react";
+import { toCanvasCoords, getCanvasTransform,mapToCanvas } from "@/app/viora/components/projector";
 
-export default function Rain2() {
+import { useRef, useState, useEffect, useMemo } from "react";
+import { cos_canvas } from "@/app/shared/curves";
+
+export default function BezierPage() {
   const canvasRef = useRef(null);
   const canvasWidth = 600;
   const canvasHeight = 400;
   const [segments, setSegments] = useState(10);
 
+  const points = cos_canvas;
+  const transform = getCanvasTransform(points,canvasWidth, canvasHeight, {paddingRatio:0.05});
   const [beziers, setBeziers] = useState(() =>
-    mapPointsToCanvas(getBezierPreset("sin"), canvasWidth, canvasHeight)
+    mapToCanvas(points, transform)
   );
 
   const dragging = useRef({ segmentIdx: null, pointIdx: null });
@@ -116,7 +119,7 @@ export default function Rain2() {
     const newX = mx;
     const newY = my;
 
-    const updated = updateLinkedBezierPoint(beziers, segmentIdx, pointIdx, {
+    const updated = updateBezier(beziers, segmentIdx, pointIdx, {
       x: newX,
       y: newY,
     });
