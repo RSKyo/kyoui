@@ -4,10 +4,14 @@ import {
   sampleBezierPoints,
   updateBezier,
 } from "@/app/viora/components/bezier";
-import { toCanvasCoords, getCanvasTransform,mapToCanvas } from "@/app/viora/components/projector";
+import {
+  toCanvasCoords,
+  getCanvasTransform,
+  mapToCanvas,
+} from "@/app/viora/components/projector";
 
 import { useRef, useState, useEffect, useMemo } from "react";
-import { cos_canvas } from "@/app/shared/curves";
+import { easeInQuad_canvas } from "@/app/shared/curves";
 
 export default function BezierPage() {
   const canvasRef = useRef(null);
@@ -15,11 +19,11 @@ export default function BezierPage() {
   const canvasHeight = 400;
   const [segments, setSegments] = useState(10);
 
-  const points = cos_canvas;
-  const transform = getCanvasTransform(points,canvasWidth, canvasHeight, {paddingRatio:0.05});
-  const [beziers, setBeziers] = useState(() =>
-    mapToCanvas(points, transform)
-  );
+  const points = easeInQuad_canvas;
+  const transform = getCanvasTransform(points, canvasWidth, canvasHeight, {
+    paddingRatio: 0.05,
+  });
+  const [beziers, setBeziers] = useState(() => mapToCanvas(points, transform));
 
   const dragging = useRef({ segmentIdx: null, pointIdx: null });
   const sampledBezierPoints = useMemo(
