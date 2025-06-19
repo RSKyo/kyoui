@@ -1,13 +1,14 @@
 "use client";
 
+import { config } from "@/app/shared/config";
 import {
   sampleBezierPoints,
   updateBezier,
 } from "@/app/viora/components/bezier";
 import {
-  toCanvasCoords,
   getCanvasTransform,
   mapToCanvas,
+  mapFromCanvas,
 } from "@/app/viora/components/projector";
 
 import { useRef, useState, useEffect, useMemo } from "react";
@@ -17,19 +18,37 @@ export default function BezierPage() {
   const canvasRef = useRef(null);
   const canvasWidth = 600;
   const canvasHeight = 400;
+  const paddingRatio = config.PADDING_RATIO;
+  const minX = canvasWidth * paddingRatio;
+  const maxX = canvasWidth * (1 - paddingRatio);
+  const minY = canvasHeight * paddingRatio;
+  const maxY = canvasHeight * (1 - paddingRatio);
+
   const [segments, setSegments] = useState(10);
-
-  const points = easeInQuad_canvas;
-  const transform = getCanvasTransform(points, canvasWidth, canvasHeight, {
-    paddingRatio: 0.05,
+  const [beziers, setBeziers] = useState(() => {
+    const points = easeInQuad_canvas;
+    return mapToCanvas(
+      points,
+      getCanvasTransform(points, canvasWidth, canvasHeight)
+    );
   });
-  const [beziers, setBeziers] = useState(() => mapToCanvas(points, transform));
 
-  const dragging = useRef({ segmentIdx: null, pointIdx: null });
   const sampledBezierPoints = useMemo(
     () => sampleBezierPoints(beziers, segments),
     [beziers, segments]
   );
+
+  const dragging = useRef({ segmentIdx: null, pointIdx: null });
+  const handleMouseUp = () => {
+    dragging.current = { segmentIdx: null, pointIdx: null };
+  };
+
+  useEffect(() => {
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -94,7 +113,7 @@ export default function BezierPage() {
       ctx.fillStyle = "green";
       ctx.fill();
     });
-  }, [segments, beziers]);
+  }, [beziers, segments]);
 
   function onMouseDown(e) {
     const rect = canvasRef.current.getBoundingClientRect();
@@ -119,19 +138,15 @@ export default function BezierPage() {
     const rect = canvasRef.current.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-
-    const newX = mx;
-    const newY = my;
+    const clampedX = Math.min(maxX, Math.max(minX, mx));
+    const clampedY = Math.min(maxY, Math.max(minY, my));
 
     const updated = updateBezier(beziers, segmentIdx, pointIdx, {
-      x: newX,
-      y: newY,
+      x: clampedX,
+      y: clampedY,
     });
-    setBeziers(updated);
-  }
 
-  function onMouseUp() {
-    dragging.current = { segmentIdx: null, pointIdx: null };
+    setBeziers(updated);
   }
 
   function copyToClipboard() {
@@ -159,7 +174,6 @@ export default function BezierPage() {
         style={{ border: "1px solid #ccc", cursor: "pointer" }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
       />
 
       <div style={{ marginTop: 10, fontFamily: "monospace" }}>

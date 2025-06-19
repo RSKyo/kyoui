@@ -97,7 +97,7 @@ function getSamplingMeta(beziers, samples) {
   let total = 0;
   const meta = segs.map((_, i) => {
     const links = getBezierLinks(segs, i);
-    const base = Math.floor(samples  / segs.length) || 1;
+    const base = Math.floor(samples / segs.length) || 1;
     const extra = links.isHead || links.isLinkedToPrev ? 1 : 0;
     const count = base + extra;
     const offset = total;
@@ -174,17 +174,17 @@ export function sampleBezierTimedValues(beziers, samples, options = {}) {
 
 // 更新起点 P0，同时联动前段末尾控制点和当前段控制点 P1
 function updatedP0(beziers, segmentIdx, x, y, dx, dy, links, set) {
-  // update curr p1
-  const p1 = beziers[segmentIdx][1];
-  const newP1 = {
-    ...p1,
-    x: p1.x + dx,
-    y: p1.y + dy,
-  };
-  set(segmentIdx, 1, newP1);
-
-  // update prev p2/p3
   if (links.isLinkedToPrev) {
+    // update curr p1
+    const p1 = beziers[segmentIdx][1];
+    const newP1 = {
+      ...p1,
+      x: p1.x + dx,
+      y: p1.y + dy,
+    };
+    set(segmentIdx, 1, newP1);
+
+    // update prev p2/p3
     const prevIdx = segmentIdx - 1;
     const p2 = beziers[prevIdx][2];
     const p3 = beziers[prevIdx][3];
@@ -234,17 +234,17 @@ function updatedP2(beziers, segmentIdx, x, y, dx, dy, links, set) {
 
 // 更新终点 P3，同时联动后段起点 P0 和控制点 P1
 function updatedP3(beziers, segmentIdx, x, y, dx, dy, links, set) {
-  // update curr p2
-  const p2 = beziers[segmentIdx][2];
-  const newP2 = {
-    ...p2,
-    x: p2.x + dx,
-    y: p2.y + dy,
-  };
-  set(segmentIdx, 2, newP2);
-
-  // update next p0/p1
   if ((links.isHead || links.isLinkedToPrev) && !links.isTail) {
+    // update curr p2
+    const p2 = beziers[segmentIdx][2];
+    const newP2 = {
+      ...p2,
+      x: p2.x + dx,
+      y: p2.y + dy,
+    };
+    set(segmentIdx, 2, newP2);
+
+    // update next p0/p1
     const nextIdx = segmentIdx + 1;
     const p0 = beziers[nextIdx][0];
     const p1 = beziers[nextIdx][1];

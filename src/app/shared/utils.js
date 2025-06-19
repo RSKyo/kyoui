@@ -1,5 +1,38 @@
 import { config } from "@/app/shared/config";
 
+// 简单封装的 log 工具，支持级别区分和可选 emoji 标识 + 调用者函数名
+function getCallerInfo() {
+  const err = new Error();
+  const stack = err.stack?.split("\n");
+  if (stack && stack.length > 3) {
+    const line = stack[3];
+    const match = line.match(/at (.+?) \(/);
+    return match?.[1] || "<anonymous>";
+  }
+  return "<unknown>";
+}
+
+export const log = {
+  debug: (...args) => {
+    if (config.DEBUG) console.log(`🟢 [viora][debug][${getCallerInfo()}]`, ...args);
+  },
+  info: (...args) => {
+    if (config.DEBUG) console.info(`🔵 [viora][info][${getCallerInfo()}]`, ...args);
+  },
+  warn: (...args) => {
+    if (config.DEBUG) console.warn(`🟡 [viora][warn][${getCallerInfo()}]`, ...args);
+  },
+  error: (...args) => {
+    if (config.DEBUG) console.error(`🔴 [viora][error][${getCallerInfo()}]`, ...args);
+  },
+  group: (label) => {
+    if (config.DEBUG) console.group(`🧩 [viora] ${label}`);
+  },
+  groupEnd: () => {
+    if (config.DEBUG) console.groupEnd();
+  },
+};
+
 // 安全除法，避免除以 0，保留默认小数位数
 export function safeDiv(a, b) {
   return +(b === 0 ? 0 : a / b).toFixed(config.DEFAULT_DECIMALS);

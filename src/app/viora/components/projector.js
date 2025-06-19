@@ -1,4 +1,5 @@
-import { safeDiv, mapNested } from "@/app/shared/utils";
+import { config } from "@/app/shared/config";
+import { log, safeDiv, mapNested } from "@/app/shared/utils";
 
 // 计算点集的边界范围信息
 function getBounds(points) {
@@ -32,17 +33,12 @@ function getBounds(points) {
  * @param {{ minX: number, minY: number, rangeX: number, rangeY: number }} bounds - 点集的边界信息
  * @param {number} width - 画布宽度
  * @param {number} height - 画布高度
- * @param {{ paddingRatio?: number }} [options] - 可选，边缘填充比例，默认 0
  * @returns {{ scale: number, ox: number, oy: number, ...bounds }} - 缩放比例和偏移量
  */
-export function getCanvasTransform(
-  points,
-  width,
-  height,
-  { paddingRatio = 0 } = {}
-) {
+export function getCanvasTransform(points, width, height) {
   const bounds = getBounds(points);
   const { rangeX, rangeY } = bounds;
+  const paddingRatio = config.PADDING_RATIO;
   const scale =
     Math.min(safeDiv(width, rangeX), safeDiv(height, rangeY)) *
     (1 - 2 * paddingRatio);
@@ -52,22 +48,23 @@ export function getCanvasTransform(
   const ox = (width - 2 * px - rangeX * scale) / 2;
   const oy = (height - 2 * py - rangeY * scale) / 2;
 
+  // log.debug({ ...bounds, scale, ox, oy, px, py });
   return { ...bounds, scale, ox, oy, px, py };
 }
 
 /**
  * 将画布坐标点映射到实际画布渲染位置（根据缩放和偏移）。
  * @param {Array|Array[]} points - 一维或二维画布坐标点集
- * @param {{ minX: number, minY: number, scale: number, ox: number, oy: number }} transform - 缩放与偏移信息
+ * @param {{ points:Array|Array[], minX: number, minY: number, scale: number, ox: number, oy: number }} canvasTransform - 缩放与偏移信息
  * @returns {Array|Array[]} - 应用于画布的最终坐标点集
  */
-export function mapToCanvas(points, transform) {
-  const { minX, minY, scale, ox, oy, px, py } = transform;
+export function mapToCanvas(points, canvasTransform) {
+  const { minX, minY, scale, ox, oy, px, py } = canvasTransform;
 
   const project = (p) => ({
     ...p,
     x: (p.x - minX) * scale + px + ox,
-    y: (p.y - minY) * scale + px + oy,
+    y: (p.y - minY) * scale + py + oy,
   });
 
   return mapNested(points, project);
