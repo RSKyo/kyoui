@@ -1,5 +1,5 @@
 import { config } from "@/app/shared/config";
-import { log, safeDiv, mapNested } from "@/app/shared/utils";
+import { safeDiv, mapNested } from "@/app/shared/utils";
 
 // 计算点集的边界范围信息
 function getBounds(points) {
@@ -48,7 +48,6 @@ export function getCanvasTransform(points, width, height) {
   const ox = (width - 2 * px - rangeX * scale) / 2;
   const oy = (height - 2 * py - rangeY * scale) / 2;
 
-  // log.debug({ ...bounds, scale, ox, oy, px, py });
   return { ...bounds, scale, ox, oy, px, py };
 }
 

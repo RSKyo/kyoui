@@ -37,7 +37,6 @@ export default function BezierPage() {
     () => sampleBezierPoints(beziers, segments),
     [beziers, segments]
   );
-
   const dragging = useRef({ segmentIdx: null, pointIdx: null });
   const handleMouseUp = () => {
     dragging.current = { segmentIdx: null, pointIdx: null };
