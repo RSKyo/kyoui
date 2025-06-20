@@ -1,6 +1,6 @@
 import { config } from "@/app/shared/config";
 
-// 简单封装的 log 工具，支持级别区分和可选 emoji 标识 + 调用者函数名
+// 获取调用者函数名（用于 log 输出定位调用源）
 function getCallerInfo() {
   const err = new Error();
   const stack = err.stack?.split("\n");
@@ -12,23 +12,30 @@ function getCallerInfo() {
   return "<unknown>";
 }
 
+// 简单封装的 log 工具，支持级别区分和可选 emoji 标识 + 调用者函数名
 export const log = {
   debug: (...args) => {
-    if (config.DEBUG) console.log(`🟢 [viora][debug][${getCallerInfo()}]`, ...args);
+    if (config.DEBUG)
+      console.log(`🟢 [viora][debug][${getCallerInfo()}]`, ...args);
   },
   info: (...args) => {
-    if (config.DEBUG) console.info(`🔵 [viora][info][${getCallerInfo()}]`, ...args);
+    if (config.DEBUG)
+      console.info(`🔵 [viora][info][${getCallerInfo()}]`, ...args);
   },
   warn: (...args) => {
-    if (config.DEBUG) console.warn(`🟡 [viora][warn][${getCallerInfo()}]`, ...args);
+    if (config.DEBUG)
+      console.warn(`🟡 [viora][warn][${getCallerInfo()}]`, ...args);
   },
   error: (...args) => {
-    if (config.DEBUG) console.error(`🔴 [viora][error][${getCallerInfo()}]`, ...args);
+    if (config.DEBUG)
+      console.error(`🔴 [viora][error][${getCallerInfo()}]`, ...args);
   },
   group: (label) => {
+    // 分组日志输出（方便浏览器 console 折叠展开）
     if (config.DEBUG) console.group(`🧩 [viora] ${label}`);
   },
   groupEnd: () => {
+    // 结束分组日志输出
     if (config.DEBUG) console.groupEnd();
   },
 };
@@ -80,4 +87,27 @@ export function mirrorPoint(point, anchor) {
 // 深度克隆
 export function deepClone(points) {
   return mapNested(points, (p) => ({ ...p }));
+}
+
+// 防抖：等你不动了我才执行
+// 防抖包装器：在用户停止触发一定时间后才执行回调
+// 适合输入框、窗口调整等高频操作
+export function debounceWrapper(fn, delay = 300, timerRef) {
+  return function (...args) {
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+// 节流：定时开闸放水
+// 节流包装器：固定时间间隔内只执行一次回调
+// 适合滚动、拖拽、resize 等连续触发事件
+export function throttleWrapper(fn, interval = 100, lastTimeRef) {
+  return function (...args) {
+    const now = Date.now();
+    if (now - lastTimeRef.current >= interval) {
+      lastTimeRef.current = now;
+      fn.apply(this, args);
+    }
+  };
 }
