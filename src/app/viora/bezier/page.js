@@ -1,7 +1,12 @@
 "use client";
 
-import { config } from "@/app/shared/config";
-import { throttleWrapper } from "@/app/shared/utils";
+import {
+  debounceWrapper,
+  throttleWrapper,
+  findMatchingPoint,
+  initializeCanvas,
+  getMousePositionInCanvas,
+} from "@/app/shared/utils";
 import {
   sampleBezierPoints,
   updateBezier,
@@ -11,18 +16,14 @@ import {
   mapToCanvas,
 } from "@/app/viora/components/projector";
 
-import { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import { easeInQuad_canvas } from "@/app/shared/curves";
 
 export default function BezierPage() {
   const canvasRef = useRef(null);
   const canvasWidth = 600;
   const canvasHeight = 400;
-  const paddingRatio = config.PADDING_RATIO;
-  const minX = canvasWidth * paddingRatio;
-  const maxX = canvasWidth * (1 - paddingRatio);
-  const minY = canvasHeight * paddingRatio;
-  const maxY = canvasHeight * (1 - paddingRatio);
+  const [canvasInfo, setCanvasInfo] = useState(null);
 
   const [segments, setSegments] = useState(10);
   const [beziers, setBeziers] = useState(() => {
@@ -38,17 +39,24 @@ export default function BezierPage() {
     [beziers, segments]
   );
   const dragging = useRef({ segmentIdx: null, pointIdx: null });
-  const handleMouseUp = () => {
-    dragging.current = { segmentIdx: null, pointIdx: null };
-  };
+
+  const debounceTimerRef = useRef(null);
   const throttleLastTimeRef = useRef(0);
 
   useEffect(() => {
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
-      window.removeEventListener(handleMouseUp);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
   }, []);
+
+  useEffect(() => {
+    if (canvasRef.current) {
+      setCanvasInfo(
+        initializeCanvas(canvasRef.current, canvasWidth, canvasHeight)
+      );
+    }
+  }, [canvasWidth, canvasHeight]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -115,44 +123,46 @@ export default function BezierPage() {
     });
   }, [beziers, segments]);
 
-  const handleMouseDown = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const clampedX = Math.min(maxX, Math.max(minX, mx));
-    const clampedY = Math.min(maxY, Math.max(minY, my));
+  const debouncedSetSegments = useMemo(
+    () =>
+      debounceWrapper(
+        debounceTimerRef,
+        (val) => {
+          const parsed = parseInt(val);
+          if (Number.isNaN(parsed)) return;
+          setSegments(Math.max(2, parsed));
+        },
+        300
+      ),
+    []
+  );
 
-    for (let i = 0; i < beziers.length; i++) {
-      for (let j = 0; j < 4; j++) {
-        const p = beziers[i][j];
-        if (Math.hypot(p.x - clampedX, p.y - clampedY) < 10) {
-          dragging.current = { segmentIdx: i, pointIdx: j };
-          return;
-        }
-      }
-    }
+  const handleMouseUp = () => {
+    dragging.current = { segmentIdx: null, pointIdx: null };
+  };
+
+  const handleMouseDown = (e) => {
+    const mousePosition = getMousePositionInCanvas(canvasInfo, e);
+    const { x, y } = mousePosition.canvas;
+
+    const match = findMatchingPoint(beziers, x, y);
+    if (match) dragging.current = match;
   };
 
   const handleMouseMove = throttleWrapper(
+    throttleLastTimeRef,
     (e) => {
       const { segmentIdx, pointIdx } = dragging.current;
       if (segmentIdx === null) return;
 
-      const rect = canvasRef.current.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      const clampedX = Math.min(maxX, Math.max(minX, mx));
-      const clampedY = Math.min(maxY, Math.max(minY, my));
+      const mousePosition = getMousePositionInCanvas(canvasInfo, e);
+      const { x, y } = mousePosition.canvas;
 
-      const updated = updateBezier(beziers, segmentIdx, pointIdx, {
-        x: clampedX,
-        y: clampedY,
-      });
+      const updated = updateBezier(beziers, segmentIdx, pointIdx, { x, y });
 
       setBeziers(updated);
     },
-    100,
-    throttleLastTimeRef
+    100
   );
 
   function copyToClipboard() {
@@ -167,9 +177,7 @@ export default function BezierPage() {
           type="number"
           value={segments}
           min={2}
-          onChange={(e) =>
-            setSegments(Math.max(2, parseInt(e.target.value) || 2))
-          }
+          onChange={(e) => debouncedSetSegments(e.target.value)}
         />
       </div>
 

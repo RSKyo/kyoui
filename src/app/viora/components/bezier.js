@@ -168,7 +168,7 @@ export function sampleBezierTimedValues(beziers, samples, options = {}) {
     const jitteredTime = applyJitter(timeBase, intervalJitterRatio, interval);
     const time = Math.max(0, Math.round(jitteredTime));
 
-    return { progress: p.progress, time, value };
+    return { progress: p.progress, x: p.x, y: p.y, time, value };
   });
 }
 
