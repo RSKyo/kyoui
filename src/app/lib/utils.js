@@ -1,4 +1,4 @@
-import { config } from "@/app/shared/config";
+import { config } from "@/app/lib/config";
 
 // 获取调用者函数名（用于 log 输出定位调用源）
 function getCallerInfo() {
@@ -47,13 +47,13 @@ export function safeDiv(a, b) {
 
 /**
  * 初始化 canvas 并返回包含绘图上下文和布局信息的对象。
- * 
+ *
  * 主要职责：
  * - 根据传入尺寸或 DOM 实际尺寸设置 canvas 大小；
  * - 适配高分屏（根据 devicePixelRatio 进行缩放）；
  * - 重置 context 的绘图状态与变换矩阵；
  * - 计算带 padding 的绘图区域（drawArea）；
- * 
+ *
  * @param {HTMLCanvasElement} canvas - 要初始化的 canvas 元素
  * @param {number} [width=0] - 可选的目标宽度（CSS 像素）
  * @param {number} [height=0] - 可选的目标高度（CSS 像素）
@@ -135,8 +135,8 @@ export function getMousePositionInCanvas(canvasInfo, e) {
 
   const vx = e.clientX;
   const vy = e.clientY;
-  const cx = Math.min(right, Math.max(left, (vx - rect.left)));
-  const cy = Math.min(bottom, Math.max(top, (vy - rect.top)));
+  const cx = Math.min(right, Math.max(left, vx - rect.left));
+  const cy = Math.min(bottom, Math.max(top, vy - rect.top));
   return {
     e,
     viewport: { x: vx, y: vy },
@@ -211,10 +211,11 @@ export function deepClone(points) {
  * @param {number} [delay=300] - 延迟时间（毫秒）
  * @returns {Function} 包装后的函数
  */
-export function debounceWrapper(timerRef, fn, delay = 300) {
+export function debounceWrapper(fn, delay = config.DEBOUNCE_DELAY) {
+  let timer = null; // 作用域私有变量
   return function (...args) {
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => fn.apply(this, args), delay);
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
   };
 }
 
@@ -227,11 +228,12 @@ export function debounceWrapper(timerRef, fn, delay = 300) {
  * @param {number} [interval=100] - 最小触发间隔（毫秒）
  * @returns {Function} 包装后的函数
  */
-export function throttleWrapper(lastTimeRef, fn, interval = 100) {
+export function throttleWrapper(fn, interval = config.THROTTLE_INTERVAL) {
+  let lastTime = 0;
   return function (...args) {
     const now = Date.now();
-    if (now - lastTimeRef.current >= interval) {
-      lastTimeRef.current = now;
+    if (now - lastTime >= interval) {
+      lastTime = now;
       fn.apply(this, args);
     }
   };

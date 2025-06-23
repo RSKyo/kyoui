@@ -1,4 +1,4 @@
-export default function Playbar({folio}) {
+export default function Foliobar({folio}) {
   const handleRun = () => {
     if (!folio) return;
     folio.run();

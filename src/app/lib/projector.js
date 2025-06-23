@@ -1,5 +1,5 @@
-import { config } from "@/app/shared/config";
-import { safeDiv, mapNested } from "@/app/shared/utils";
+import { config } from "@/app/lib/config";
+import { safeDiv, mapNested } from "@/app/lib/utils";
 
 // 计算点集的边界范围信息
 function getBounds(points) {

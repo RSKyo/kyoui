@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import './Button.css';
+import './button.css';
 // import { VT323 } from 'next/font/google';
 
 // const vt323 = VT323({

@@ -1,11 +1,11 @@
-import { config } from "@/app/shared/config";
+import { config } from "@/app/lib/config";
 import {
   safeDiv,
   getSegments,
   applyJitter,
   isSamePoint,
   mirrorPoint,
-} from "@/app/shared/utils";
+} from "@/app/lib/utils";
 
 // 计算三次贝塞尔曲线在参数 t (0~1) 下的坐标点
 function evaluateCoords(p0, p1, p2, p3, t) {

@@ -1,6 +1,4 @@
 'use client';
-import Image from "next/image";
-import { ThemeToggle } from '@/';
 
 export default function Home() {
   return (
