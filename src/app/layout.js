@@ -1,18 +1,18 @@
-import { Roboto, Noto_Sans_SC } from 'next/font/google';
+// import { Roboto, Noto_Sans_SC } from 'next/font/google';
 import "./globals.css";
-import ThemeProvider from '@/app/components/Theme/ThemeProvider';
+import ThemeProvider from '@/app/components/theme/themeProvider';
 
-const roboto = Roboto({
-  subsets: ['latin'],
-  weight: ['100', '400', '700'], 
-  variable: "--font-roboto",
-});
+// const roboto = Roboto({
+//   subsets: ['latin'],
+//   weight: ['100', '400', '700'], 
+//   variable: "--font-roboto",
+// });
 
-const notoSans = Noto_Sans_SC({
-  subsets: ['latin'],
-  weight: ['100', '400', '700'],
-  variable: "--font-noto-sans",
-});
+// const notoSans = Noto_Sans_SC({
+//   subsets: ['latin'],
+//   weight: ['100', '400', '700'],
+//   variable: "--font-noto-sans",
+// });
 
 export const metadata = {
   icons: "/favicon.ico",
@@ -23,7 +23,8 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className={`${roboto.variable} antialiased`}>
+      {/* <body className={`${roboto.variable} antialiased`}> */}
+      <body className={` antialiased`}>
         body begin
         <ThemeProvider/>
         {children}

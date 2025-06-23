@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState, useEffect, useMemo } from "react";
 import {
   debounceWrapper,
   throttleWrapper,
@@ -15,16 +16,14 @@ import {
   getCanvasTransform,
   mapToCanvas,
 } from "@/app/lib/projector";
-
-import { useRef, useState, useEffect, useMemo } from "react";
 import { easeInQuad_canvas } from "@/app/bezier/presets/easing";
 
 export default function BezierPage() {
   const canvasRef = useRef(null);
   const canvasWidth = 600;
   const canvasHeight = 400;
-  const [canvasInfo, setCanvasInfo] = useState(null);
 
+  const [canvasInfo, setCanvasInfo] = useState(null);
   const [samples, setSamples] = useState(10);
   const [beziers, setBeziers] = useState(() => {
     const points = easeInQuad_canvas;
@@ -38,7 +37,20 @@ export default function BezierPage() {
     () => sampleBezierPoints(beziers, samples),
     [beziers, samples]
   );
+
   const dragging = useRef({ segmentIdx: null, pointIdx: null });
+
+  const debouncedSetSamples = useMemo(() => debounceWrapper(setSamples), []);
+  const throttleUpdateBezier = useMemo(
+    () =>
+      throttleWrapper((mousePosition, beziers) => {
+        const { segmentIdx, pointIdx } = dragging.current;
+        const { x, y } = mousePosition.canvas;
+        const updated = updateBezier(beziers, segmentIdx, pointIdx, { x, y });
+        setBeziers(updated);
+      }),
+    []
+  );
 
   useEffect(() => {
     window.addEventListener("mouseup", handleMouseUp);
@@ -110,8 +122,7 @@ export default function BezierPage() {
       });
     });
 
-    // 已通过 useMemo 生成 sampledBezierPoints，无需再次计算
-
+    // draw sampled points
     sampledBezierPoints.forEach(({ x, y }) => {
       ctx.beginPath();
       ctx.arc(x, y, 3, 0, Math.PI * 2);
@@ -120,43 +131,27 @@ export default function BezierPage() {
     });
   }, [beziers, samples]);
 
-  const debouncedSetSamples = useMemo(() => debounceWrapper(setSamples), []);
   const handleSamplesChange = (e) => {
     const v = parseInt(e.target.value);
     debouncedSetSamples(v);
   };
 
-  const handleMouseUp = () => {
-    dragging.current = { segmentIdx: null, pointIdx: null };
-  };
-
   const handleMouseDown = (e) => {
     const mousePosition = getMousePositionInCanvas(canvasInfo, e);
     const { x, y } = mousePosition.canvas;
-
     const match = findMatchingPoint(beziers, x, y);
     if (match) dragging.current = match;
   };
 
   const handleMouseMove = (e) => {
     if (dragging.current.segmentIdx === null) return;
-
     const mousePosition = getMousePositionInCanvas(canvasInfo, e);
-
     throttleUpdateBezier(mousePosition, beziers);
   };
 
-  const throttleUpdateBezier = useMemo(
-    () =>
-      throttleWrapper((mousePosition, beziers) => {
-        const { segmentIdx, pointIdx } = dragging.current;
-        const { x, y } = mousePosition.canvas;
-        const updated = updateBezier(beziers, segmentIdx, pointIdx, { x, y });
-
-        setBeziers(updated);
-      }),
-    []
-  );
+  const handleMouseUp = () => {
+    dragging.current = { segmentIdx: null, pointIdx: null };
+  };
 
   function copyToClipboard() {
     navigator.clipboard.writeText(JSON.stringify(sampledBezierPoints, null, 2));
