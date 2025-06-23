@@ -8,14 +8,8 @@ import {
   initializeCanvas,
   getMousePositionInCanvas,
 } from "@/app/lib/utils";
-import {
-  sampleBezierPoints,
-  updateBezier,
-} from "@/app/lib/bezier";
-import {
-  getCanvasTransform,
-  mapToCanvas,
-} from "@/app/lib/projector";
+import { sampleBezierPoints, updateBezier } from "@/app/lib/bezier";
+import { getCanvasTransform, mapToCanvas } from "@/app/lib/projector";
 import { easeInQuad_canvas } from "@/app/bezier/presets/easing";
 
 export default function BezierPage() {
