@@ -46,6 +46,7 @@ function sampleBezier(p0, p1, p2, p3, count, options = {}) {
   const skip = isLinkedToPrev ? 1 : 0;
   const denom = count - 1;
   const totalDenom = total - 1;
+  const f = Math.pow(10, config.DEFAULT_DECIMALS);
 
   return Array.from({ length: count - skip }, (_, i) => {
     const t = safeDiv(i + skip, denom);
@@ -55,11 +56,11 @@ function sampleBezier(p0, p1, p2, p3, count, options = {}) {
     let dy = origin.y - y;
 
     if (config.FIXED) {
-      progress = +progress.toFixed(config.DEFAULT_DECIMALS);
-      x = +x.toFixed(config.DEFAULT_DECIMALS);
-      y = +y.toFixed(config.DEFAULT_DECIMALS);
-      dx = +dx.toFixed(config.DEFAULT_DECIMALS);
-      dy = +dy.toFixed(config.DEFAULT_DECIMALS);
+      progress = Math.round(progress * f) / f;
+      x = Math.round(x * f) / f;
+      y = Math.round(y * f) / f;
+      dx = Math.round(dx * f) / f;
+      dy = Math.round(dy * f) / f;
     }
 
     return {
@@ -152,7 +153,9 @@ export function sampleBezierTimedValues(beziers, samples, options = {}) {
     valueJitterRatio = 0.3,
     interval = 100,
     intervalJitterRatio = 0.2,
-    axis = config.AXIS.DY,
+    axis = config.constants.AXIS.DY,
+    includeXY = false,
+    includeDXY = false,
   } = options;
 
   const points = sampleBezierPoints(beziers, samples);
@@ -168,7 +171,10 @@ export function sampleBezierTimedValues(beziers, samples, options = {}) {
     const jitteredTime = applyJitter(timeBase, intervalJitterRatio, interval);
     const time = Math.max(0, Math.round(jitteredTime));
 
-    return { progress: p.progress, x: p.x, y: p.y, time, value };
+    const xy = includeXY ? { x: p.x, y: p.y } : {};
+    const dxy = includeDXY ? { dx: p.dx, dy: p.dy } : {};
+
+    return { progress: p.progress, time, value, ...xy, ...dxy };
   });
 }
 

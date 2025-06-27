@@ -42,7 +42,7 @@ export const log = {
 
 // 安全除法，避免除以 0，保留默认小数位数
 export function safeDiv(a, b) {
-  return +(b === 0 ? 0 : a / b).toFixed(config.DEFAULT_DECIMALS);
+  return b === 0 ? 0 : a / b;
 }
 
 /**

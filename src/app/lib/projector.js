@@ -28,13 +28,6 @@ function getBounds(points) {
   };
 }
 
-/**
- * 计算画布缩放与偏移参数，使数学点集适配指定画布尺寸
- * @param {{ minX: number, minY: number, rangeX: number, rangeY: number }} bounds - 点集的边界信息
- * @param {number} width - 画布宽度
- * @param {number} height - 画布高度
- * @returns {{ scale: number, ox: number, oy: number, ...bounds }} - 缩放比例和偏移量
- */
 export function getCanvasTransform(points, width, height) {
   const bounds = getBounds(points);
   const { rangeX, rangeY } = bounds;
@@ -48,43 +41,59 @@ export function getCanvasTransform(points, width, height) {
   const ox = (width - 2 * px - rangeX * scale) / 2;
   const oy = (height - 2 * py - rangeY * scale) / 2;
 
-  return { ...bounds, scale, ox, oy, px, py };
+  return { bounds, scale, padding: { x: px, y: py }, offset: { x: ox, y: oy } };
 }
 
-/**
- * 将画布坐标点映射到实际画布渲染位置（根据缩放和偏移）。
- * @param {Array|Array[]} points - 一维或二维画布坐标点集
- * @param {{ points:Array|Array[], minX: number, minY: number, scale: number, ox: number, oy: number }} canvasTransform - 缩放与偏移信息
- * @returns {Array|Array[]} - 应用于画布的最终坐标点集
- */
 export function mapToCanvas(points, canvasTransform) {
-  const { minX, minY, scale, ox, oy, px, py } = canvasTransform;
+  const { bounds, scale, padding, offset } = canvasTransform;
+  const { minX, minY } = bounds;
+  const f = Math.pow(10, config.DEFAULT_DECIMALS);
 
-  const project = (p) => ({
-    ...p,
-    x: (p.x - minX) * scale + px + ox,
-    y: (p.y - minY) * scale + py + oy,
-  });
+  const project = (p) => {
+    let x = (p.x - minX) * scale + padding.x + offset.x;
+    let y = (p.y - minY) * scale + padding.y + offset.y;
+    if (config.FIXED) {
+      x = Math.round(x * f) / f;
+      y = Math.round(y * f) / f;
+    }
+    return {
+      ...p,
+      x,
+      y,
+    };
+  };
 
   return mapNested(points, project);
 }
 
-/**
- * 将画布坐标点反转换为数学坐标
- * @param {Array|Array[]} points - 一维或二维点集
- * @param {{ minX: number, minY: number, scale: number, ox: number, oy: number }} transform - 缩放与偏移信息
- * @returns {Array|Array[]} - 还原后的数学坐标点集
- */
-export function mapFromCanvas(points, transform) {
-  const { minX, minY, scale, ox, oy } = transform;
+export function mapFromCanvas(points, canvasTransform) {
+  const { bounds, scale, padding, offset } = canvasTransform;
+  const { minX, minY } = bounds;
+  const f = Math.pow(10, config.DEFAULT_DECIMALS);
 
-  const unproject = (p) => ({
-    ...p,
-    x: safeDiv(p.x - ox, scale) + minX,
-    y: safeDiv(p.y - oy, scale) + minY,
-  });
+  const unproject = (p) => {
+    let x = safeDiv(p.x - padding.x - offset.x, scale) + minX;
+    let y = safeDiv(p.y - padding.y - offset.y, scale) + minY;
+    if (config.FIXED) {
+      x = Math.round(x * f) / f;
+      y = Math.round(y * f) / f;
+    }
+    return {
+      ...p,
+      x,
+      y,
+    };
+  };
 
-  return mapNested(points, unproject);
+  const newPoints = mapNested(points, unproject);
+  const newBounds = getBounds(newPoints);
+  const move = (p) => {
+    p.x = Math.round((p.x - newBounds.minX) * f) / f;
+    p.y = Math.round((p.y - newBounds.minY) * f) / f;
+    return p;
+  };
+  const aaa = mapNested(newPoints, move);
+  return aaa;
 }
 
 /**

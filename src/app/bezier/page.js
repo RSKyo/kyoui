@@ -8,32 +8,46 @@ import {
   initializeCanvas,
   getMousePositionInCanvas,
 } from "@/app/lib/utils";
-import { sampleBezierPoints, updateBezier } from "@/app/lib/bezier";
-import { getCanvasTransform, mapToCanvas } from "@/app/lib/projector";
-import { easeInQuad_canvas } from "@/app/bezier/presets/easing";
+import { sampleBezierTimedValues, updateBezier } from "@/app/lib/bezier";
+import {
+  getCanvasTransform,
+  mapToCanvas,
+  mapFromCanvas,
+} from "@/app/lib/projector";
+import { kyouiInSine_canvas } from "@/app/bezier/presets/gesture";
 
 export default function BezierPage() {
   const canvasRef = useRef(null);
   const canvasWidth = 600;
   const canvasHeight = 400;
 
+  const [isClient, setIsClient] = useState(false);
   const [canvasInfo, setCanvasInfo] = useState(null);
   const [samples, setSamples] = useState(10);
+  const [points, setPoints] = useState(kyouiInSine_canvas);
+  const [canvasTransform, setTransform] = useState(() => {
+    return getCanvasTransform(points, canvasWidth, canvasHeight);
+  });
   const [beziers, setBeziers] = useState(() => {
-    const points = easeInQuad_canvas;
-    return mapToCanvas(
-      points,
-      getCanvasTransform(points, canvasWidth, canvasHeight)
-    );
+    return mapToCanvas(points, canvasTransform);
   });
 
-  const sampledBezierPoints = useMemo(
-    () => sampleBezierPoints(beziers, samples),
+  const sampledTimedValues = useMemo(
+    () =>
+      sampleBezierTimedValues(beziers, samples, {
+        minValue: 1,
+        maxValue: 50,
+        valueJitterRatio: 0.3,
+        interval: 100,
+        intervalJitterRatio: 0.2,
+        includeXY: true,
+      }),
     [beziers, samples]
   );
 
   const dragging = useRef({ segmentIdx: null, pointIdx: null });
 
+  const debouncedSetPoints = useMemo(() => debounceWrapper(setPoints), []);
   const debouncedSetSamples = useMemo(() => debounceWrapper(setSamples), []);
   const throttleUpdateBezier = useMemo(
     () =>
@@ -47,6 +61,7 @@ export default function BezierPage() {
   );
 
   useEffect(() => {
+    setIsClient(true);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
       window.removeEventListener("mouseup", handleMouseUp);
@@ -117,13 +132,18 @@ export default function BezierPage() {
     });
 
     // draw sampled points
-    sampledBezierPoints.forEach(({ x, y }) => {
+    sampledTimedValues.forEach(({ x, y }) => {
       ctx.beginPath();
       ctx.arc(x, y, 3, 0, Math.PI * 2);
       ctx.fillStyle = "green";
       ctx.fill();
     });
   }, [beziers, samples]);
+
+  const handlePointsChange = (e) => {
+    const v = JSON.parse(e.target.value);
+    if(v) debouncedSetPoints(v);
+  };
 
   const handleSamplesChange = (e) => {
     const v = parseInt(e.target.value);
@@ -148,47 +168,78 @@ export default function BezierPage() {
   };
 
   function copyToClipboard() {
-    navigator.clipboard.writeText(JSON.stringify(sampledBezierPoints, null, 2));
+    navigator.clipboard.writeText(JSON.stringify(sampledTimedValues, null, 2));
   }
 
   return (
-    <div>
-      <div style={{ marginBottom: 8 }}>
-        <label>Samples: </label>
-        <input
-          type="number"
-          value={samples}
-          min={2}
-          onChange={handleSamplesChange}
+    <div style={{ display: "flex" }}>
+      <div style={{ flex: "none" }}>
+         <div style={{ marginBottom: 8 }}>
+          <input
+            type="text"
+            value={JSON.stringify(points)}
+            onChange={handlePointsChange}
+            placeholder="Input points JSON"
+            style={{ width: "100%" }}
+          />
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <label>Samples: </label>
+          <input
+            type="number"
+            value={samples}
+            min={2}
+            onChange={handleSamplesChange}
+          />
+        </div>
+
+        <canvas
+          ref={canvasRef}
+          width={canvasWidth}
+          height={canvasHeight}
+          style={{ border: "1px solid #ccc", cursor: "pointer" }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
         />
-      </div>
 
-      <canvas
-        ref={canvasRef}
-        width={canvasWidth}
-        height={canvasHeight}
-        style={{ border: "1px solid #ccc", cursor: "pointer" }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-      />
-
-      <div style={{ marginTop: 10, fontFamily: "monospace" }}>
-        <strong>Sampled Points:</strong>
-        <button onClick={copyToClipboard} style={{ marginLeft: 10 }}>
-          Copy
-        </button>
-        <div
-          style={{
-            maxHeight: 200,
-            overflowY: "auto",
-            border: "1px solid #ccc",
-            padding: 5,
-            marginTop: 5,
-          }}
-        >
-          <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-            {JSON.stringify(sampledBezierPoints, null, 2)}
-          </pre>
+        <div style={{ marginTop: 10, fontFamily: "monospace" }}>
+          <div
+            style={{
+              maxHeight: 200,
+              maxWidth: canvasWidth,
+              overflow: "auto",
+              wordBreak: "break-word",
+              whiteSpace: "pre-wrap",
+              padding: 5,
+              boxSizing: "border-box",
+              fontSize: "10px",
+            }}
+          >
+            <pre style={{ margin: 0 }}>
+              {JSON.stringify(mapFromCanvas(beziers, canvasTransform))}
+            </pre>
+          </div>
+          <strong>Sampled Points:</strong>
+          <button onClick={copyToClipboard} style={{ marginLeft: 10 }}>
+            Copy
+          </button>
+          <div
+            style={{
+              maxHeight: 200,
+              maxWidth: canvasWidth,
+              overflow: "auto",
+              border: "1px solid #ccc",
+              padding: 5,
+              boxSizing: "border-box",
+              fontSize: "10px",
+            }}
+          >
+            <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+              {isClient
+                ? JSON.stringify(sampledTimedValues)
+                : "Loading..."}
+            </pre>
+          </div>
         </div>
       </div>
     </div>
