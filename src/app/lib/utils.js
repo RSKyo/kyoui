@@ -1,4 +1,5 @@
 import { config } from "@/app/lib/config";
+import { create } from "zustand";
 
 // 获取调用者函数名（用于 log 输出定位调用源）
 function getCallerInfo() {
@@ -74,6 +75,7 @@ export function safeDiv(a, b) {
  * }}
  */
 export function initializeCanvas(canvas, width = 0, height = 0) {
+  if (!canvas) return null;
   const dpr = window.devicePixelRatio || 1;
 
   // rect 是调用时的边界信息，是 DOM 的“快照”，就不会反映后续变化。
@@ -238,3 +240,35 @@ export function throttleWrapper(fn, interval = config.THROTTLE_INTERVAL) {
     }
   };
 }
+
+function shallowEqual(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export const useGlobalStore = create((set, get) => ({
+  globalDataMap: {},
+
+  setGlobalData: (key, value) => {
+    const oldValue = get().globalDataMap[key];
+    if (!shallowEqual(oldValue, value)) {
+      set((state) => ({
+        globalDataMap: {
+          ...state.globalDataMap,
+          [key]: value,
+        },
+      }));
+    }
+  },
+
+  getGlobalData: (key) => get().globalDataMap[key],
+
+  removeGlobalData: (key) => {
+    set((state) => {
+      const updated = { ...state.globalDataMap };
+      delete updated[key];
+      return { globalDataMap: updated };
+    });
+  },
+
+  clearGlobalData: () => set({ globalDataMap: {} }),
+}));
