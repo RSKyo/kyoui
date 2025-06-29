@@ -4,13 +4,14 @@ import { useRef, useState, useEffect, useMemo } from "react";
 import {
   throttleWrapper,
   findMatchingPoint,
-  initializeCanvas,
-  getMousePositionInCanvas,
   useGlobalStore,
+  whenRefReady,
 } from "@/app/lib/utils";
 import { sampleBezierTimedValues, updateBezier } from "@/app/lib/bezier";
 import {
+  initializeCanvas,
   getCanvasTransform,
+  getCanvasMouseInfo,
   mapToCanvas,
   mapFromCanvas,
 } from "@/app/lib/projector";
@@ -18,8 +19,6 @@ import { kyouiInSine_canvas } from "@/app/bezier/presets/gesture";
 
 export default function BezierPage() {
   const canvasRef = useRef(null);
-  const canvasWidth = 600;
-  const canvasHeight = 400;
   const defaultSamplingOptions = {
     minValue: 1,
     maxValue: 50,
@@ -33,34 +32,33 @@ export default function BezierPage() {
   const [canvasInfo, setCanvasInfo] = useState(null);
   const [samples, setSamples] = useState(10);
   const [points, setPoints] = useState(kyouiInSine_canvas);
-  const [canvasTransform, setCanvasTransform] = useState(() => {
-    return getCanvasTransform(points, canvasWidth, canvasHeight);
-  });
-  const [beziers, setBeziers] = useState(() => {
-    return mapToCanvas(points, canvasTransform);
-  });
+  const [canvasTransform, setCanvasTransform] = useState(null);
+  const [beziers, setBeziers] = useState(null);
+  const [timedValues, setTimedValues] = useState(null);
 
-  const sampledTimedValues = useMemo(
-    () => sampleBezierTimedValues(beziers, samples, defaultSamplingOptions),
-    [beziers, samples]
-  );
   const { setGlobalData } = useGlobalStore();
 
   const dragging = useRef({ segmentIdx: null, pointIdx: null });
 
   const throttleUpdateBezier = useMemo(
     () =>
-      throttleWrapper((mousePosition, beziers) => {
-        const { segmentIdx, pointIdx } = dragging.current;
-        const { x, y } = mousePosition.canvas;
-        const updated = updateBezier(beziers, segmentIdx, pointIdx, { x, y });
+      throttleWrapper((_beziers, _segmentIdx, _pointIdx, _newPoint) => {
+        const updated = updateBezier(
+          _beziers,
+          _segmentIdx,
+          _pointIdx,
+          _newPoint
+        );
         setBeziers(updated);
       }),
     []
   );
 
+  // 首次加载
   useEffect(() => {
-    setIsClient(true);
+    if (!canvasRef.current) return;
+    setCanvasInfo(initializeCanvas(canvasRef.current));
+
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
       window.removeEventListener("mouseup", handleMouseUp);
@@ -68,32 +66,43 @@ export default function BezierPage() {
   }, []);
 
   useEffect(() => {
-    const canvasInfo = initializeCanvas(
-      canvasRef.current,
-      canvasWidth,
-      canvasHeight
-    );
-    setCanvasInfo(canvasInfo);
-  }, [canvasWidth, canvasHeight]);
+    if (!canvasInfo) return;
+
+    const _canvasTransform = getCanvasTransform(points, canvasInfo);
+    setCanvasTransform(_canvasTransform);
+    const _beziers = mapToCanvas(points, _canvasTransform);
+    setBeziers(_beziers);
+  }, [points, canvasInfo]);
 
   useEffect(() => {
+    if (!beziers) return;
+
+    setTimedValues(
+      sampleBezierTimedValues(beziers, samples, defaultSamplingOptions)
+    );
+  }, [beziers, samples]);
+
+  useEffect(() => {
+    if (!timedValues) return;
+
+    const { width, height } = canvasInfo;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    ctx.clearRect(0, 0, width, height);
 
     // background grid
     ctx.strokeStyle = "#eee";
     ctx.lineWidth = 1;
-    for (let x = 0; x < canvasWidth; x += 50) {
+    for (let x = 0; x < width; x += 50) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvasHeight);
+      ctx.lineTo(x, height);
       ctx.stroke();
     }
-    for (let y = 0; y < canvasHeight; y += 50) {
+    for (let y = 0; y < height; y += 50) {
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.lineTo(canvasWidth, y);
+      ctx.lineTo(width, y);
       ctx.stroke();
     }
 
@@ -132,31 +141,30 @@ export default function BezierPage() {
     });
 
     // draw sampled points
-    sampledTimedValues.forEach(({ x, y }) => {
+    timedValues.forEach(({ x, y }) => {
       ctx.beginPath();
       ctx.arc(x, y, 3, 0, Math.PI * 2);
       ctx.fillStyle = "green";
       ctx.fill();
     });
 
-    setGlobalData("sampledTimedValues", sampledTimedValues);
-  }, [beziers, samples]);
+    setGlobalData("timedValues", timedValues);
+  }, [timedValues]);
 
   const handlePointsChanged = (e) => {
     try {
       const newPoints = JSON.parse(e.target.value);
       const newCanvasTransform = getCanvasTransform(
         newPoints,
-        canvasWidth,
-        canvasHeight
+        canvasInfo.width,
+        canvasInfo.height
       );
       const newBeziers = mapToCanvas(newPoints, newCanvasTransform);
       setPoints(newPoints);
       setCanvasTransform(newCanvasTransform);
       setBeziers(newBeziers);
     } catch (err) {
-      e.target.value =JSON.stringify(points);
-      console.log(JSON.stringify(points));
+      e.target.value = JSON.stringify(points);
     }
   };
 
@@ -166,16 +174,16 @@ export default function BezierPage() {
   };
 
   const handleMouseDown = (e) => {
-    const mousePosition = getMousePositionInCanvas(canvasInfo, e);
-    const { x, y } = mousePosition.canvas;
+    const { x, y } = getCanvasMouseInfo(e, canvasInfo);
     const match = findMatchingPoint(beziers, x, y);
     if (match) dragging.current = match;
   };
 
   const handleMouseMove = (e) => {
     if (dragging.current.segmentIdx === null) return;
-    const mousePosition = getMousePositionInCanvas(canvasInfo, e);
-    throttleUpdateBezier(mousePosition, beziers);
+    const { x, y } = getCanvasMouseInfo(e, canvasInfo);
+    const { segmentIdx, pointIdx } = dragging.current;
+    throttleUpdateBezier(beziers, segmentIdx, pointIdx, { x, y });
   };
 
   const handleMouseUp = () => {
@@ -183,72 +191,50 @@ export default function BezierPage() {
   };
 
   return (
-    <div style={{ display: "flex" }}>
-      <div style={{ flex: "none" }}>
-        <div style={{ display: "flex", gap: 5 }}>
-          <label style={{ width: 70, textAlign: "right" }}>Points:</label>
-          <input
-            type="text"
-            defaultValue={JSON.stringify(points)}
-            onBlur={handlePointsChanged}
-            placeholder="Input points JSON"
-            style={{ flex: 1 }}
-          />
-        </div>
-        <div style={{ display: "flex", gap: 5 }}>
-          <label style={{ width: 70, textAlign: "right" }}>Samples:</label>
-          <input
-            type="number"
-            defaultValue={samples}
-            min={2}
-            onBlur={handleSamplesChanged}
-            style={{ flex: 1 }}
-          />
-        </div>
-
-        <canvas
-          ref={canvasRef}
-          width={canvasWidth}
-          height={canvasHeight}
-          style={{ border: "1px solid #ccc", cursor: "pointer" }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-        />
-
-        <div style={{ marginTop: 10, fontFamily: "monospace" }}>
-          <div
-            style={{
-              maxHeight: 200,
-              maxWidth: canvasWidth,
-              overflow: "auto",
-              wordBreak: "break-word",
-              whiteSpace: "pre-wrap",
-              padding: 5,
-              boxSizing: "border-box",
-              fontSize: "10px",
-            }}
-          >
-            <pre style={{ margin: 0 }}>
-              {JSON.stringify(mapFromCanvas(beziers, canvasTransform))}
-            </pre>
+    <div className="flex flex-row h-full">
+      <div className="flex-1 min-w-0 flex flex-col bg-gray-100">
+        <div className="flex-initial bg-orange-100">
+          <div className="flex gap-1">
+            <label >Points:</label>
+            <input
+              type="text"
+              defaultValue={JSON.stringify(points)}
+              onBlur={handlePointsChanged}
+              className="flex-1"
+            />
           </div>
-          <strong>Sampled Timed Values:</strong>
-          <div
-            style={{
-              maxHeight: 200,
-              maxWidth: canvasWidth,
-              overflow: "auto",
-              border: "1px solid #ccc",
-              padding: 5,
-              boxSizing: "border-box",
-              fontSize: "10px",
-            }}
-          >
-            <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-              {isClient ? JSON.stringify(sampledTimedValues) : "Loading..."}
-            </pre>
+           <div className="flex gap-1">
+            <label>Samples:</label>
+            <input
+              type="number"
+              defaultValue={samples}
+              min={2}
+              onBlur={handleSamplesChanged}
+            />
           </div>
         </div>
+        <div className="flex-1 bg-orange-200">
+          <canvas
+            className="w-full h-full bg-white"
+            ref={canvasRef}
+            style={{ border: "1px solid #ccc", cursor: "pointer" }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+          />
+        </div>
+        <div className="flex-initial h-12 overflow-x-auto">
+          <pre className="text-xs font-mono whitespace-pre">
+            {beziers !== null
+              ? JSON.stringify(mapFromCanvas(beziers, canvasTransform))
+              : "Loading..."}
+          </pre>
+        </div>
+      </div>
+      <div className="flex-1 min-w-0  overflow-auto bg-gray-200">
+        <strong>Sampled Timed Values:</strong>
+        <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+          {timedValues !== null ? JSON.stringify(timedValues) : "Loading..."}
+        </pre>
       </div>
     </div>
   );
