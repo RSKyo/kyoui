@@ -41,6 +41,34 @@ export const log = {
   },
 };
 
+export function* flattenArray(arr) {
+  for (const item of arr) {
+    if (Array.isArray(item)) {
+      yield* flattenArray(item);
+    } else {
+      yield item;
+    }
+  }
+}
+
+export function clamp(value, min, max) {
+  return Math.max(min, Math.min(value, max));
+}
+
+export function roundFixed(
+  n,
+  decimals = config.DEFAULT_DECIMALS ?? 0,
+  method = "round"
+) {
+  const f = Math.pow(10, decimals);
+  const map = {
+    round: Math.round,
+    floor: Math.floor,
+    ceil: Math.ceil,
+  };
+  return map[method]?.(n * f) / f;
+}
+
 // 安全除法，避免除以 0，保留默认小数位数
 export function safeDiv(a, b) {
   return b === 0 ? 0 : a / b;
@@ -56,11 +84,12 @@ export function getSegments(points) {
   return isSegmented(points) ? points : [points];
 }
 
-// 对一维或二维点数组执行映射操作
-export function mapNested(points, fn) {
-  return isSegmented(points)
-    ? points.map((segment) => segment.map(fn))
-    : points.map(fn);
+// 对一维或多维点数组执行映射操作
+export function mapNested(data, fn) {
+  if (Array.isArray(data)) {
+    return data.map((d) => mapNested(d, fn));
+  }
+  return fn(data);
 }
 
 // 对数值添加抖动扰动（以 base 为基础，在 ±jitterBase * ratio 范围内变动）
@@ -173,20 +202,25 @@ export const useGlobalStore = create((set, get) => ({
   clearGlobalData: () => set({ globalDataMap: {} }),
 }));
 
-export function whenRefReady(ref, callback, { attempt = 10 } = {}) {
-  let count = 0;
+export function whenElementReady(getElementFn, { attempt = 10 } = {}) {
+  return new Promise((resolve, reject) => {
+    let count = 0;
 
-  const tryfn = () => {
-    if (ref.current) {
-      callback();
-      return;
-    }
+    const tryFn = () => {
+      const element = getElementFn();
+      if (element) {
+        resolve(element);
+        return;
+      }
 
-    if (count >= attempt) return;
-    count++;
+      if (count >= attempt) {
+        reject(null);
+        return;
+      }
+      count++;
+      requestAnimationFrame(tryFn);
+    };
 
-    requestAnimationFrame(tryfn);
-  };
-
-  tryfn();
+    tryFn();
+  });
 }

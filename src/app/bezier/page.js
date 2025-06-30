@@ -1,11 +1,14 @@
 "use client";
 
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { tomorrow } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useRef, useState, useEffect, useMemo } from "react";
 import {
+  log,
   throttleWrapper,
   findMatchingPoint,
   useGlobalStore,
-  whenRefReady,
+  whenElementReady,
 } from "@/app/lib/utils";
 import { sampleBezierTimedValues, updateBezier } from "@/app/lib/bezier";
 import {
@@ -56,9 +59,10 @@ export default function BezierPage() {
 
   // 首次加载
   useEffect(() => {
-    if (!canvasRef.current) return;
-    setCanvasInfo(initializeCanvas(canvasRef.current));
-
+    whenElementReady(() => canvasRef.current)
+      .then(() => {
+        setCanvasInfo(initializeCanvas(canvasRef.current));
+      });
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
       window.removeEventListener("mouseup", handleMouseUp);
@@ -191,11 +195,11 @@ export default function BezierPage() {
   };
 
   return (
-    <div className="flex flex-row h-full">
-      <div className="flex-1 min-w-0 flex flex-col bg-gray-100">
-        <div className="flex-initial bg-orange-100">
+    <div className="flex flex-row h-full rounded-lg">
+      <div className="flex-1 min-w-0 flex flex-col p-1">
+        <div className="flex-initial  ">
           <div className="flex gap-1">
-            <label >Points:</label>
+            <label>Points:</label>
             <input
               type="text"
               defaultValue={JSON.stringify(points)}
@@ -203,7 +207,7 @@ export default function BezierPage() {
               className="flex-1"
             />
           </div>
-           <div className="flex gap-1">
+          <div className="flex gap-1">
             <label>Samples:</label>
             <input
               type="number"
@@ -213,9 +217,9 @@ export default function BezierPage() {
             />
           </div>
         </div>
-        <div className="flex-1 bg-orange-200">
+        <div className="flex-1">
           <canvas
-            className="w-full h-full bg-white"
+            className="w-full h-full"
             ref={canvasRef}
             style={{ border: "1px solid #ccc", cursor: "pointer" }}
             onMouseDown={handleMouseDown}
@@ -230,11 +234,24 @@ export default function BezierPage() {
           </pre>
         </div>
       </div>
-      <div className="flex-1 min-w-0  overflow-auto bg-gray-200">
+      <div className="flex-1 min-w-0  overflow-auto bg-neutral-100 p-1">
         <strong>Sampled Timed Values:</strong>
-        <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-          {timedValues !== null ? JSON.stringify(timedValues) : "Loading..."}
-        </pre>
+        <SyntaxHighlighter
+          language="json"
+          style={tomorrow}
+          showLineNumbers={true}
+          wrapLongLines
+          customStyle={{
+            borderRadius: "8px",
+            padding: "1rem",
+            fontSize: "10px",
+          }}
+          codeTagProps={{ style: { fontFamily: "Fira Code, monospace" } }}
+        >
+          {timedValues !== null
+            ? JSON.stringify(timedValues, null, 2)
+            : "Loading..."}
+        </SyntaxHighlighter>
       </div>
     </div>
   );
