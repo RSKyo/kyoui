@@ -1,3 +1,20 @@
+/**
+ * canvasTransform.js
+ *
+ * 提供一组围绕 HTML Canvas 的初始化与坐标变换方法，包含以下功能：
+ *
+ * - 初始化 canvas（高 DPI 支持、绘图区域计算）
+ * - 获取鼠标位置映射到可绘区域
+ * - 将逻辑空间中的点映射到画布坐标（mapToCanvas）
+ * - 将画布坐标反映射回逻辑空间（mapFromCanvas）
+ * - 提供辅助方法：对齐原点、坐标系正反转换、边界计算等
+ *
+ * 核心关注点：
+ * - 逻辑点位与 canvas 的映射关系（project / unproject）
+ * - 缩放比例计算与居中偏移
+ * - 保留小数精度的统一处理（roundFixed）
+ */
+
 import { config } from "@/app/lib/config";
 import {
   flattenArray,
