@@ -1,47 +1,8 @@
-/**
- * canvasTransform.js
- *
- * 提供一组围绕 HTML Canvas 的初始化与坐标变换方法，包含以下功能：
- *
- * - 初始化 canvas（高 DPI 支持、绘图区域计算）
- * - 获取鼠标位置映射到可绘区域
- * - 将逻辑空间中的点映射到画布坐标（mapToCanvas）
- * - 将画布坐标反映射回逻辑空间（mapFromCanvas）
- * - 提供辅助方法：对齐原点、坐标系正反转换、边界计算等
- *
- * 核心关注点：
- * - 逻辑点位与 canvas 的映射关系（project / unproject）
- * - 缩放比例计算与居中偏移
- * - 保留小数精度的统一处理（roundFixed）
- */
-
 import { config } from "@/app/lib/config";
-import {
-  flattenArray,
-  clamp,
-  roundFixed,
-  safeDiv,
-  mapNested,
-} from "@/app/lib/utils";
+import { mapNested, roundFixed, safeDiv, clamp } from "@/app/lib/utils/common";
+import { getBounds } from "@/app/lib/utils/geometry";
 
-// 计算点数组（可嵌套）的边界值和范围
-function getBounds(points) {
-  const iter = flattenArray(points);
-  let [minX, maxX, minY, maxY] = [Infinity, -Infinity, Infinity, -Infinity];
-
-  for (const { x, y } of iter) {
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
-  }
-
-  const rangeX = maxX - minX || 1;
-  const rangeY = maxY - minY || 1;
-
-  return { minX, maxX, minY, maxY, rangeX, rangeY };
-}
-
+// 初始化 canvas 尺寸、缩放与上下文，并计算绘图区域和边距信息
 export function initializeCanvas(canvas, options = {}) {
   if (!canvas) return null;
   const {
@@ -103,6 +64,10 @@ export function initializeCanvas(canvas, options = {}) {
     bottom: h - py,
   };
 
+  const clear = ()=>{
+    ctx.clearRect(0, 0, w, h);
+  };
+
   return {
     canvas,
     ctx,
@@ -111,9 +76,11 @@ export function initializeCanvas(canvas, options = {}) {
     padding,
     domRect,
     drawArea,
+    clear,
   };
 }
 
+// 将鼠标事件坐标转换为 canvas 可绘区域中的位置（含边界裁剪）
 export function getCanvasMouseInfo(e, canvasInfo) {
   const { left: l, top: t } = canvasInfo.domRect;
   const { left, top, right, bottom } = canvasInfo.drawArea;
@@ -125,6 +92,7 @@ export function getCanvasMouseInfo(e, canvasInfo) {
   };
 }
 
+// 根据点集和画布信息计算缩放比例与绘制偏移量，用于逻辑坐标 → 画布坐标映射
 export function getCanvasTransform(points, canvasInfo) {
   const bounds = getBounds(points);
   const { rangeX, rangeY } = bounds;
@@ -147,6 +115,7 @@ export function getCanvasTransform(points, canvasInfo) {
   return { bounds, scale, drawOffset };
 }
 
+// 将点集从逻辑坐标空间映射到 canvas 坐标空间（适配缩放与偏移）
 export function mapToCanvas(points, transform) {
   const { bounds, scale, drawOffset } = transform;
   const { minX, minY } = bounds;
@@ -160,6 +129,7 @@ export function mapToCanvas(points, transform) {
   return mapNested(points, project);
 }
 
+// 将点集从 canvas 坐标空间反映射为逻辑坐标，并可选对齐到原点
 export function mapFromCanvas(points, transform, options = {}) {
   const { bounds, scale, drawOffset } = transform;
   const { minX, minY } = bounds;
@@ -178,6 +148,7 @@ export function mapFromCanvas(points, transform, options = {}) {
     : unprojectPoints;
 }
 
+// 将点集平移，使其最小边界对齐到指定原点（默认左上角 0,0）
 export function alignToOrigin(points, options = {}) {
   const { origin = { x: 0, y: 0 }, mutate = false } = options;
   const bounds = getBounds(points);
@@ -197,12 +168,7 @@ export function alignToOrigin(points, options = {}) {
   });
 }
 
-/**
- * 将数学坐标系的点转换为画布坐标系（左上为原点，y 向下）
- * 自动平移原点并反转 y 轴方向
- * @param {Array|Array[]} points - 一维或二维点集
- * @returns {Array|Array[]} - 映射后的画布坐标点集
- */
+// 将数学坐标（原点在左下）转换为画布坐标（原点在左上，y 轴向下）
 export function toCanvasCoords(points) {
   const flat = points.flat(Infinity);
   const { minX, maxY } = flat.reduce(
@@ -222,13 +188,7 @@ export function toCanvasCoords(points) {
   return mapNested(points, project);
 }
 
-/**
- * 将画布坐标系的点转换回数学坐标系（默认以某一点为原点，y 向上）
- * 反转 y 轴方向，并平移原点
- * @param {Array|Array[]} points - 一维或二维点集
- * @param {{ x?: number, y?: number }} [origin={}] - 可选原点坐标
- * @returns {Array|Array[]} - 转换后的数学坐标点集
- */
+// 将画布坐标（原点左上）转换为数学坐标（原点左下，y 轴向上）
 export function toMathCoords(points, origin = {}) {
   const { x = 0, y = 0 } = origin;
   const project = (p) => ({

@@ -1,26 +1,26 @@
 "use client";
 
+import { config } from "@/app/lib/config";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { tomorrow } from "react-syntax-highlighter/dist/cjs/styles/prism";
-import { useRef, useState, useEffect, useMemo } from "react";
-import {
-  log,
-  throttleWrapper,
-  findMatchingPoint,
-  useGlobalStore,
-  whenElementReady,
-} from "@/app/lib/utils";
-import { sampleBezierTimedValues, updateBezier } from "@/app/lib/bezier";
+import { useRef, useState, useEffect, useMemo, useCallback } from "react";
+import { whenElementReady } from "@/app/lib/utils/dom";
+import { throttleWrapper, debounceWrapper } from "@/app/lib/utils/timing";
+import { useGlobalMap } from "@/app/lib/utils/store";
+import { locateHitPoint } from "@/app/lib/utils/points";
+import { sampleBezierTimedValues } from "@/app/lib/bezier/sampler";
+import { updateBezier } from "@/app/lib/bezier/updater";
 import {
   initializeCanvas,
   getCanvasTransform,
   getCanvasMouseInfo,
   mapToCanvas,
   mapFromCanvas,
-} from "@/app/lib/projector";
+} from "@/app/lib/canvas/transform";
 import { kyouiInSine_canvas } from "@/app/bezier/presets/gesture";
 
 export default function BezierPage() {
+  const canvasParentRef = useRef(null);
   const canvasRef = useRef(null);
   const defaultSamplingOptions = {
     minValue: 1,
@@ -28,71 +28,83 @@ export default function BezierPage() {
     valueJitterRatio: 0.3,
     interval: 100,
     intervalJitterRatio: 0.2,
+    axis: config.constants.AXIS.DY,
     includeXY: true,
+    includeDXY: false,
   };
 
-  const [isClient, setIsClient] = useState(false);
-  const [canvasInfo, setCanvasInfo] = useState(null);
+  const [sourcePoints, setSourcePoints] = useState(kyouiInSine_canvas);
   const [samples, setSamples] = useState(10);
-  const [points, setPoints] = useState(kyouiInSine_canvas);
+
+  const [canvasInfo, setCanvasInfo] = useState(null);
   const [canvasTransform, setCanvasTransform] = useState(null);
   const [beziers, setBeziers] = useState(null);
   const [timedValues, setTimedValues] = useState(null);
 
-  const { setGlobalData } = useGlobalStore();
+  const { setGlobalMap } = useGlobalMap();
 
-  const dragging = useRef({ segmentIdx: null, pointIdx: null });
+  const dragging = useRef({ segmentIndex: null, pointIndex: null });
 
-  const throttleUpdateBezier = useMemo(
-    () =>
-      throttleWrapper((_beziers, _segmentIdx, _pointIdx, _newPoint) => {
-        const updated = updateBezier(
-          _beziers,
-          _segmentIdx,
-          _pointIdx,
-          _newPoint
-        );
-        setBeziers(updated);
-      }),
-    []
-  );
+  const prepareData = ({
+    _canvasElement,
+    _canvasWidth,
+    _canvasHeight,
+    _sourcePoints,
+    _samples,
+    _beziers,
+  } = {}) => {
+    const __canvasInfo = _canvasElement
+      ? initializeCanvas(_canvasElement, {
+          width: _canvasWidth,
+          height: _canvasHeight,
+        })
+      : canvasInfo;
+    const __sourcePoints = _sourcePoints || sourcePoints;
+    const __samples = _samples || samples;
+
+    const __canvasTransform =
+      _canvasElement || _sourcePoints
+        ? getCanvasTransform(__sourcePoints, __canvasInfo)
+        : canvasTransform;
+    const __beziers =
+      _canvasElement || _sourcePoints
+        ? mapToCanvas(__sourcePoints, __canvasTransform)
+        : _beziers || beziers;
+    const __timedValues =
+      _canvasElement || _sourcePoints || _beziers || _samples
+        ? sampleBezierTimedValues(__beziers, __samples, defaultSamplingOptions)
+        : timedValues;
+
+    if (_canvasElement) setCanvasInfo(__canvasInfo);
+    if (_sourcePoints) setSourcePoints(__sourcePoints);
+    if (_samples) setSamples(__samples);
+    if (_canvasElement || _sourcePoints) setCanvasTransform(__canvasTransform);
+    if (_canvasElement || _sourcePoints || _beziers) setBeziers(__beziers);
+    if (_canvasElement || _sourcePoints || _beziers || _samples)
+      setTimedValues(__timedValues);
+  };
 
   // 首次加载
   useEffect(() => {
-    whenElementReady(() => canvasRef.current)
-      .then(() => {
-        setCanvasInfo(initializeCanvas(canvasRef.current));
-      });
+    whenElementReady(() => canvasRef.current).then((element) => {
+      prepareData({ _canvasElement: element });
+    });
+
+    const observer = new ResizeObserver(debounceHandleResize);
+    observer.observe(canvasParentRef.current);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
+      observer.disconnect();
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, []);
 
   useEffect(() => {
-    if (!canvasInfo) return;
-
-    const _canvasTransform = getCanvasTransform(points, canvasInfo);
-    setCanvasTransform(_canvasTransform);
-    const _beziers = mapToCanvas(points, _canvasTransform);
-    setBeziers(_beziers);
-  }, [points, canvasInfo]);
-
-  useEffect(() => {
-    if (!beziers) return;
-
-    setTimedValues(
-      sampleBezierTimedValues(beziers, samples, defaultSamplingOptions)
-    );
-  }, [beziers, samples]);
-
-  useEffect(() => {
     if (!timedValues) return;
 
     const { width, height } = canvasInfo;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, width, height);
+    const ctx = canvasInfo.ctx;
+    canvasInfo.clear();
 
     // background grid
     ctx.strokeStyle = "#eee";
@@ -123,7 +135,7 @@ export default function BezierPage() {
         points[3].y
       );
       ctx.strokeStyle = "blue";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1;
       ctx.stroke();
 
       ctx.setLineDash([5, 5]);
@@ -152,106 +164,116 @@ export default function BezierPage() {
       ctx.fill();
     });
 
-    setGlobalData("timedValues", timedValues);
+    setGlobalMap("timedValues", timedValues);
   }, [timedValues]);
 
   const handlePointsChanged = (e) => {
     try {
-      const newPoints = JSON.parse(e.target.value);
-      const newCanvasTransform = getCanvasTransform(
-        newPoints,
-        canvasInfo.width,
-        canvasInfo.height
-      );
-      const newBeziers = mapToCanvas(newPoints, newCanvasTransform);
-      setPoints(newPoints);
-      setCanvasTransform(newCanvasTransform);
-      setBeziers(newBeziers);
+      const _sourcePoints = JSON.parse(e.target.value);
+      prepareData({ _sourcePoints });
     } catch (err) {
-      e.target.value = JSON.stringify(points);
+      e.target.value = JSON.stringify(sourcePoints);
     }
   };
 
   const handleSamplesChanged = (e) => {
-    const v = e.target.value;
-    setSamples(v);
+    const _samples = e.target.value;
+    prepareData({ _samples });
   };
 
   const handleMouseDown = (e) => {
     const { x, y } = getCanvasMouseInfo(e, canvasInfo);
-    const match = findMatchingPoint(beziers, x, y);
+    const match = locateHitPoint(beziers, x, y);
     if (match) dragging.current = match;
   };
 
   const handleMouseMove = (e) => {
-    if (dragging.current.segmentIdx === null) return;
+    if (dragging.current.segmentIndex === null) return;
     const { x, y } = getCanvasMouseInfo(e, canvasInfo);
-    const { segmentIdx, pointIdx } = dragging.current;
-    throttleUpdateBezier(beziers, segmentIdx, pointIdx, { x, y });
+    const { segmentIndex, pointIndex } = dragging.current;
+    throttleUpdateBezier(beziers, segmentIndex, pointIndex, x, y);
   };
 
   const handleMouseUp = () => {
-    dragging.current = { segmentIdx: null, pointIdx: null };
+    dragging.current = { segmentIndex: null, pointIndex: null };
   };
 
+  const handlerUpdateBezier = (beziers, segmentIndex, pointIndex, x, y) => {
+    const updated = updateBezier(beziers, segmentIndex, pointIndex, x, y);
+    prepareData({ _beziers: updated });
+  };
+
+  const throttleUpdateBezier = useMemo(
+    () => throttleWrapper(handlerUpdateBezier),
+    []
+  );
+
+  const handleResize = (entries) => {
+    const { width, height } = entries[0].contentRect;
+    prepareData({
+      _canvasElement: canvasRef.current,
+      _canvasWidth: width,
+      _canvasHeight: height,
+    });
+  };
+
+  const debounceHandleResize = useMemo(() => debounceWrapper(handleResize), []);
+
   return (
-    <div className="flex flex-row h-full rounded-lg">
-      <div className="flex-1 min-w-0 flex flex-col p-1">
-        <div className="flex-initial  ">
-          <div className="flex gap-1">
-            <label>Points:</label>
-            <input
-              type="text"
-              defaultValue={JSON.stringify(points)}
-              onBlur={handlePointsChanged}
-              className="flex-1"
-            />
-          </div>
-          <div className="flex gap-1">
-            <label>Samples:</label>
-            <input
-              type="number"
-              defaultValue={samples}
-              min={2}
-              onBlur={handleSamplesChanged}
-            />
-          </div>
+    <div className="flex h-full">
+      {/* 左侧固定宽度面板 */}
+      <div className="w-[280px] bg-white border-r border-gray-200 p-4 space-y-2 flex flex-col">
+        {/* 源点输入 */}
+        <div className="space-y-1">
+          <label className="block text-xs text-gray-500">
+            源曲线点 (Points)
+          </label>
+          <textarea
+            defaultValue={JSON.stringify(sourcePoints, null, 2)}
+            onBlur={handlePointsChanged}
+            rows={6}
+            className="input-basic w-full font-mono text-xs"
+          />
         </div>
-        <div className="flex-1">
+        {/* 采样数 */}
+        <div className="space-y-1 flex flex-col">
+          <label className="block text-xs text-gray-500">
+            采样数 (Samples)
+          </label>
+          <input
+            type="number"
+            defaultValue={samples}
+            min={2}
+            onBlur={handleSamplesChanged}
+            className="input-basic w-full"
+          />
+        </div>
+        {/* 采样结果 */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <label className="block text-xs text-gray-500">
+            采样结果 (Sampled Timed Values)
+          </label>
+          <textarea
+            readOnly
+            value={
+              timedValues ? JSON.stringify(timedValues, null, 2) : "Loading..."
+            }
+            className="flex-1 input-basic font-mono text-xs"
+          />
+        </div>
+      </div>
+      <div className="flex-1 bg-neutral-50 p-4 overflow-hidden">
+        <div
+          className="w-full h-full rounded border border-gray-300 bg-white "
+          ref={canvasParentRef}
+        >
           <canvas
-            className="w-full h-full"
             ref={canvasRef}
-            style={{ border: "1px solid #ccc", cursor: "pointer" }}
+            className="w-full h-full cursor-pointer"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
           />
         </div>
-        <div className="flex-initial h-12 overflow-x-auto">
-          <pre className="text-xs font-mono whitespace-pre">
-            {beziers !== null
-              ? JSON.stringify(mapFromCanvas(beziers, canvasTransform))
-              : "Loading..."}
-          </pre>
-        </div>
-      </div>
-      <div className="flex-1 min-w-0  overflow-auto bg-neutral-100 p-1">
-        <strong>Sampled Timed Values:</strong>
-        <SyntaxHighlighter
-          language="json"
-          style={tomorrow}
-          showLineNumbers={true}
-          wrapLongLines
-          customStyle={{
-            borderRadius: "8px",
-            padding: "1rem",
-            fontSize: "10px",
-          }}
-          codeTagProps={{ style: { fontFamily: "Fira Code, monospace" } }}
-        >
-          {timedValues !== null
-            ? JSON.stringify(timedValues, null, 2)
-            : "Loading..."}
-        </SyntaxHighlighter>
       </div>
     </div>
   );
