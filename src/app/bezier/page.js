@@ -1,9 +1,7 @@
 "use client";
 
-import { config } from "@/app/lib/config";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { tomorrow } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
+import { config } from "@/app/lib/config";
 import { whenElementReady } from "@/app/lib/utils/dom";
 import { throttleWrapper, debounceWrapper } from "@/app/lib/utils/timing";
 import { useGlobalMap } from "@/app/lib/utils/store";
@@ -32,6 +30,7 @@ export default function BezierPage() {
     includeXY: true,
     includeDXY: false,
   };
+
 
   const [sourcePoints, setSourcePoints] = useState(kyouiInSine_canvas);
   const [samples, setSamples] = useState(10);
@@ -196,6 +195,7 @@ export default function BezierPage() {
 
   const handleMouseUp = () => {
     dragging.current = { segmentIndex: null, pointIndex: null };
+    
   };
 
   const handlerUpdateBezier = (beziers, segmentIndex, pointIndex, x, y) => {

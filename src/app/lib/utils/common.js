@@ -55,3 +55,13 @@ export function applyJitter(base, ratio, { jitterBase = base } = {}) {
 export function jsonEqual(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
+
+export function generateId(prefix = "") {
+  const id =
+    typeof crypto?.randomUUID === "function"
+      ? crypto.randomUUID()
+      : Date.now().toString(36) + Math.random().toString(36).slice(2);
+  return `${prefix ? prefix + "-" : ""}${id}`;
+}
+
+
