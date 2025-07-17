@@ -1,17 +1,18 @@
 "use client";
 
 import { useRef, useEffect, useState, useMemo } from "react";
-
 import { createFolio } from "@/app/lib/canvas/folio";
-import { useGlobalMap } from "@/app/lib/utils/store";
 import { whenElementReady } from "@/app/lib/utils/dom";
 import { debounceWrapper } from "@/app/lib/utils/timing";
 import { initializeCanvas } from "@/app/lib/canvas/transform";
+import {log} from "@/app/lib/utils/logger";
 
 export default function RainPage() {
   const canvasParentRef = useRef(null);
   const canvasRef = useRef(null);
   const [canvasInfo, setCanvasInfo] = useState(null);
+
+  const [data, setData] = useState(null);
   const [folio, setFolio] = useState(null);
 
   const folioOptions = {
@@ -24,7 +25,7 @@ export default function RainPage() {
     onEnd: null,
   };
 
-  const timedValues = useGlobalMap((state) => state.globalMap["timedValues"]);
+  const bc = useMemo(() => new BroadcastChannel("sample-draw"), []);
 
   useEffect(() => {
     whenElementReady(() => canvasRef.current).then((element) => {
@@ -33,12 +34,10 @@ export default function RainPage() {
     });
     const observer = new ResizeObserver(debounceHandleResize);
     observer.observe(canvasParentRef.current);
-
-    window.addEventListener("storage", handleStorage);
+    bc.onmessage = handleOnMessage;
     return () => {
       observer.disconnect();
       folio.stop();
-      window.removeEventListener("storage", handleStorage);
     };
   }, []);
 
@@ -56,24 +55,9 @@ export default function RainPage() {
 
   const debounceHandleResize = useMemo(() => debounceWrapper(handleResize), []);
 
-  const handleStorage = (event) => {
-    if (event.key === "globalMap-storage") {
-      const parsed = JSON.parse(event.newValue);
-      
-      // 将新值同步到当前 tab 的 Zustand 状态中
-      if (parsed?.state?.globalMap) {
-        // 更新当前 store 的状态
-        const current = useGlobalMap.getState().globalMap;
-        const incoming = parsed.state.globalMap;
 
-        // 简单去重逻辑：仅更新变化的键
-        Object.entries(incoming).forEach(([key, value]) => {
-          if (!Object.is(current[key], value)) {
-            useGlobalMap.getState().setGlobalMap(key, value);
-          }
-        });
-      }
-    }
+  const handleOnMessage = (event) => {
+    setData(event.data);
   };
 
   return (

@@ -4,7 +4,6 @@ import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import { config } from "@/app/lib/config";
 import { whenElementReady } from "@/app/lib/utils/dom";
 import { throttleWrapper, debounceWrapper } from "@/app/lib/utils/timing";
-import { useGlobalMap } from "@/app/lib/utils/store";
 import { locateHitPoint } from "@/app/lib/utils/points";
 import { sampleBezierTimedValues } from "@/app/lib/bezier/sampler";
 import { updateBezier } from "@/app/lib/bezier/updater";
@@ -31,7 +30,6 @@ export default function BezierPage() {
     includeDXY: false,
   };
 
-
   const [sourcePoints, setSourcePoints] = useState(kyouiInSine_canvas);
   const [samples, setSamples] = useState(10);
 
@@ -40,7 +38,7 @@ export default function BezierPage() {
   const [beziers, setBeziers] = useState(null);
   const [timedValues, setTimedValues] = useState(null);
 
-  const { setGlobalMap } = useGlobalMap();
+  const bc = useMemo(() => new BroadcastChannel("sample-draw"), []);
 
   const dragging = useRef({ segmentIndex: null, pointIndex: null });
 
@@ -79,8 +77,10 @@ export default function BezierPage() {
     if (_samples) setSamples(__samples);
     if (_canvasElement || _sourcePoints) setCanvasTransform(__canvasTransform);
     if (_canvasElement || _sourcePoints || _beziers) setBeziers(__beziers);
-    if (_canvasElement || _sourcePoints || _beziers || _samples)
+    if (_canvasElement || _sourcePoints || _beziers || _samples) {
       setTimedValues(__timedValues);
+      bc.postMessage(__timedValues);
+    }
   };
 
   // 首次加载
@@ -162,8 +162,6 @@ export default function BezierPage() {
       ctx.fillStyle = "green";
       ctx.fill();
     });
-
-    setGlobalMap("timedValues", timedValues);
   }, [timedValues]);
 
   const handlePointsChanged = (e) => {
@@ -195,7 +193,6 @@ export default function BezierPage() {
 
   const handleMouseUp = () => {
     dragging.current = { segmentIndex: null, pointIndex: null };
-    
   };
 
   const handlerUpdateBezier = (beziers, segmentIndex, pointIndex, x, y) => {

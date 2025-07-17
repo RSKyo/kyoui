@@ -9,6 +9,8 @@ export const config = {
   DEBOUNCE_DELAY: 300, // 防抖延迟时间（毫秒）
   THROTTLE_INTERVAL: 100, // 截流最小触发间隔（毫秒）
 
+  ZUSTAND_PERSIST_STORE_KEY: "ZUSTAND_PERSIST_DATA",
+
   constants: {
     AXIS: {
       DY: "dy",

@@ -52,10 +52,6 @@ export function applyJitter(base, ratio, { jitterBase = base } = {}) {
   return base + jitterBase * (Math.random() * 2 - 1) * ratio;
 }
 
-export function jsonEqual(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
 export function generateId(prefix = "") {
   const id =
     typeof crypto?.randomUUID === "function"
@@ -64,4 +60,9 @@ export function generateId(prefix = "") {
   return `${prefix ? prefix + "-" : ""}${id}`;
 }
 
+export const filterEntries = (obj, fn) =>
+  Object.fromEntries(Object.entries(obj).filter(([k, v]) => fn(k, v)));
+
+export const isEqualJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+export const isEqualRef = (a, b) => Object.is(a, b);
 
