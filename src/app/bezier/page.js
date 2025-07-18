@@ -29,11 +29,10 @@ export default function BezierPage() {
     includeXY: true,
     includeDXY: false,
   };
-
+  const [canvasInfo, setCanvasInfo] = useState(null);
   const [sourcePoints, setSourcePoints] = useState(kyouiInSine_canvas);
   const [samples, setSamples] = useState(10);
 
-  const [canvasInfo, setCanvasInfo] = useState(null);
   const [canvasTransform, setCanvasTransform] = useState(null);
   const [beziers, setBeziers] = useState(null);
   const [timedValues, setTimedValues] = useState(null);
@@ -42,51 +41,45 @@ export default function BezierPage() {
 
   const dragging = useRef({ segmentIndex: null, pointIndex: null });
 
-  const prepareData = ({
-    _canvasElement,
-    _canvasWidth,
-    _canvasHeight,
-    _sourcePoints,
-    _samples,
-    _beziers,
-  } = {}) => {
-    const __canvasInfo = _canvasElement
-      ? initializeCanvas(_canvasElement, {
-          width: _canvasWidth,
-          height: _canvasHeight,
-        })
-      : canvasInfo;
-    const __sourcePoints = _sourcePoints || sourcePoints;
-    const __samples = _samples || samples;
+  const syncDataState = (options = {}) => {
+    const isCanvasInfoChanged = "canvasInfo" in options;
+    const isSourcePointsChanged = "sourcePoints" in options;
+    const isSamplesChanged = "samples" in options;
+    const isCanvasTransformChanged =
+      isCanvasInfoChanged || isSourcePointsChanged;
+    const isBeziersChanged = isCanvasTransformChanged || "beziers" in options;
+    const isTimedValuesChanged = isBeziersChanged || isSamplesChanged;
 
-    const __canvasTransform =
-      _canvasElement || _sourcePoints
-        ? getCanvasTransform(__sourcePoints, __canvasInfo)
-        : canvasTransform;
-    const __beziers =
-      _canvasElement || _sourcePoints
-        ? mapToCanvas(__sourcePoints, __canvasTransform)
-        : _beziers || beziers;
-    const __timedValues =
-      _canvasElement || _sourcePoints || _beziers || _samples
-        ? sampleBezierTimedValues(__beziers, __samples, defaultSamplingOptions)
-        : timedValues;
+    const _canvasInfo = options.canvasInfo ?? canvasInfo;
+    const _sourcePoints = options.sourcePoints ?? sourcePoints;
+    const _samples = options.samples ?? samples;
 
-    if (_canvasElement) setCanvasInfo(__canvasInfo);
-    if (_sourcePoints) setSourcePoints(__sourcePoints);
-    if (_samples) setSamples(__samples);
-    if (_canvasElement || _sourcePoints) setCanvasTransform(__canvasTransform);
-    if (_canvasElement || _sourcePoints || _beziers) setBeziers(__beziers);
-    if (_canvasElement || _sourcePoints || _beziers || _samples) {
-      setTimedValues(__timedValues);
-      bc.postMessage(__timedValues);
+    const _canvasTransform = isCanvasTransformChanged
+      ? getCanvasTransform(_sourcePoints, _canvasInfo)
+      : canvasTransform;
+    const _beziers = isCanvasTransformChanged
+      ? mapToCanvas(_sourcePoints, _canvasTransform)
+      : options.beziers ?? beziers;
+    const _timedValues = isTimedValuesChanged
+      ? sampleBezierTimedValues(_beziers, _samples, defaultSamplingOptions)
+      : timedValues;
+
+    if (isCanvasInfoChanged) setCanvasInfo(_canvasInfo);
+    if (isSourcePointsChanged) setSourcePoints(_sourcePoints);
+    if (isSamplesChanged) setSamples(_samples);
+    if (isCanvasTransformChanged) setCanvasTransform(_canvasTransform);
+    if (isBeziersChanged) setBeziers(_beziers);
+    if (isTimedValuesChanged) {
+      setTimedValues(_timedValues);
+      bc.postMessage(_timedValues);
     }
   };
 
   // 首次加载
   useEffect(() => {
     whenElementReady(() => canvasRef.current).then((element) => {
-      prepareData({ _canvasElement: element });
+      const canvasInfo = initializeCanvas(element);
+      syncDataState({ canvasInfo });
     });
 
     const observer = new ResizeObserver(debounceHandleResize);
@@ -95,6 +88,7 @@ export default function BezierPage() {
     return () => {
       observer.disconnect();
       window.removeEventListener("mouseup", handleMouseUp);
+      bc.close();
     };
   }, []);
 
@@ -166,16 +160,16 @@ export default function BezierPage() {
 
   const handlePointsChanged = (e) => {
     try {
-      const _sourcePoints = JSON.parse(e.target.value);
-      prepareData({ _sourcePoints });
+      const newSourcePoints = JSON.parse(e.target.value);
+      syncDataState({ sourcePoints:newSourcePoints });
     } catch (err) {
       e.target.value = JSON.stringify(sourcePoints);
     }
   };
 
   const handleSamplesChanged = (e) => {
-    const _samples = e.target.value;
-    prepareData({ _samples });
+    const newSamples = Number(e.target.value);
+    syncDataState({ samples:newSamples });
   };
 
   const handleMouseDown = (e) => {
@@ -195,23 +189,20 @@ export default function BezierPage() {
     dragging.current = { segmentIndex: null, pointIndex: null };
   };
 
-  const handlerUpdateBezier = (beziers, segmentIndex, pointIndex, x, y) => {
-    const updated = updateBezier(beziers, segmentIndex, pointIndex, x, y);
-    prepareData({ _beziers: updated });
+  const handleUpdateBezier = (beziers, segmentIndex, pointIndex, x, y) => {
+    const newBeziers = updateBezier(beziers, segmentIndex, pointIndex, x, y);
+    syncDataState({ beziers: newBeziers });
   };
 
   const throttleUpdateBezier = useMemo(
-    () => throttleWrapper(handlerUpdateBezier),
+    () => throttleWrapper(handleUpdateBezier),
     []
   );
 
   const handleResize = (entries) => {
     const { width, height } = entries[0].contentRect;
-    prepareData({
-      _canvasElement: canvasRef.current,
-      _canvasWidth: width,
-      _canvasHeight: height,
-    });
+    const canvasInfo = initializeCanvas(canvasRef.current, { width, height });
+    syncDataState({ canvasInfo });
   };
 
   const debounceHandleResize = useMemo(() => debounceWrapper(handleResize), []);
@@ -266,7 +257,7 @@ export default function BezierPage() {
         >
           <canvas
             ref={canvasRef}
-            className="w-full h-full cursor-pointer"
+            className="w-full h-full cursor-pointer select-none"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
           />

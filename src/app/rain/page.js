@@ -12,7 +12,7 @@ export default function RainPage() {
   const canvasRef = useRef(null);
   const [canvasInfo, setCanvasInfo] = useState(null);
 
-  const [data, setData] = useState(null);
+  const [timedValues, setTimedValues] = useState(null);
   const [folio, setFolio] = useState(null);
 
   const folioOptions = {
@@ -57,7 +57,7 @@ export default function RainPage() {
 
 
   const handleOnMessage = (event) => {
-    setData(event.data);
+    setTimedValues(event.data);
   };
 
   return (
