@@ -15,6 +15,7 @@ import {
   mapFromCanvas,
 } from "@/app/lib/canvas/transform";
 import { kyouiInSine_canvas } from "@/app/bezier/presets/gesture";
+import { useBroadcastChannel } from "@/app/lib/utils/hooks";
 
 export default function BezierPage() {
   const canvasParentRef = useRef(null);
@@ -37,7 +38,7 @@ export default function BezierPage() {
   const [beziers, setBeziers] = useState(null);
   const [timedValues, setTimedValues] = useState(null);
 
-  const bc = useMemo(() => new BroadcastChannel("sample-draw"), []);
+  const bc = useBroadcastChannel("sample-draw");
 
   const dragging = useRef({ segmentIndex: null, pointIndex: null });
 
@@ -50,9 +51,11 @@ export default function BezierPage() {
     const isBeziersChanged = isCanvasTransformChanged || "beziers" in options;
     const isTimedValuesChanged = isBeziersChanged || isSamplesChanged;
 
-    const _canvasInfo = options.canvasInfo ?? canvasInfo;
-    const _sourcePoints = options.sourcePoints ?? sourcePoints;
-    const _samples = options.samples ?? samples;
+    const _canvasInfo = isCanvasInfoChanged ? options.canvasInfo : canvasInfo;
+    const _sourcePoints = isSourcePointsChanged
+      ? options.sourcePoints
+      : sourcePoints;
+    const _samples = isSamplesChanged ? options.samples : samples;
 
     const _canvasTransform = isCanvasTransformChanged
       ? getCanvasTransform(_sourcePoints, _canvasInfo)
@@ -93,7 +96,7 @@ export default function BezierPage() {
   }, []);
 
   useEffect(() => {
-    if (!timedValues) return;
+    if(!canvasInfo) return;
 
     const { width, height } = canvasInfo;
     const ctx = canvasInfo.ctx;
@@ -114,8 +117,12 @@ export default function BezierPage() {
       ctx.lineTo(width, y);
       ctx.stroke();
     }
+  }, [canvasInfo]);
 
-    // draw curves and handles
+  useEffect(() => {
+    if(!beziers) return;
+    
+    const ctx = canvasInfo.ctx;
     beziers.forEach((points) => {
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
@@ -148,8 +155,12 @@ export default function BezierPage() {
         ctx.fill();
       });
     });
+  }, [beziers]);
 
-    // draw sampled points
+  useEffect(() => {
+    if(!timedValues) return;
+    
+    const ctx = canvasInfo.ctx;
     timedValues.forEach(({ x, y }) => {
       ctx.beginPath();
       ctx.arc(x, y, 3, 0, Math.PI * 2);
@@ -161,7 +172,7 @@ export default function BezierPage() {
   const handlePointsChanged = (e) => {
     try {
       const newSourcePoints = JSON.parse(e.target.value);
-      syncDataState({ sourcePoints:newSourcePoints });
+      syncDataState({ sourcePoints: newSourcePoints });
     } catch (err) {
       e.target.value = JSON.stringify(sourcePoints);
     }
@@ -169,7 +180,7 @@ export default function BezierPage() {
 
   const handleSamplesChanged = (e) => {
     const newSamples = Number(e.target.value);
-    syncDataState({ samples:newSamples });
+    syncDataState({ samples: newSamples });
   };
 
   const handleMouseDown = (e) => {
