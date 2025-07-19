@@ -15,7 +15,7 @@ import {
   mapFromCanvas,
 } from "@/app/lib/canvas/transform";
 import { kyouiInSine_canvas } from "@/app/bezier/presets/gesture";
-import { useBroadcastChannel } from "@/app/lib/utils/hooks";
+import { useBroadcastChannel, useElementResize } from "@/app/lib/utils/hooks";
 
 export default function BezierPage() {
   const canvasParentRef = useRef(null);
@@ -80,23 +80,14 @@ export default function BezierPage() {
 
   // 首次加载
   useEffect(() => {
-    whenElementReady(() => canvasRef.current).then((element) => {
-      const canvasInfo = initializeCanvas(element);
-      syncDataState({ canvasInfo });
-    });
-
-    const observer = new ResizeObserver(debounceHandleResize);
-    observer.observe(canvasParentRef.current);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
-      observer.disconnect();
       window.removeEventListener("mouseup", handleMouseUp);
-      bc.close();
     };
   }, []);
 
   useEffect(() => {
-    if(!canvasInfo) return;
+    if (!canvasInfo) return;
 
     const { width, height } = canvasInfo;
     const ctx = canvasInfo.ctx;
@@ -120,8 +111,8 @@ export default function BezierPage() {
   }, [canvasInfo]);
 
   useEffect(() => {
-    if(!beziers) return;
-    
+    if (!beziers) return;
+
     const ctx = canvasInfo.ctx;
     beziers.forEach((points) => {
       ctx.beginPath();
@@ -158,8 +149,8 @@ export default function BezierPage() {
   }, [beziers]);
 
   useEffect(() => {
-    if(!timedValues) return;
-    
+    if (!timedValues) return;
+
     const ctx = canvasInfo.ctx;
     timedValues.forEach(({ x, y }) => {
       ctx.beginPath();
@@ -210,13 +201,17 @@ export default function BezierPage() {
     []
   );
 
-  const handleResize = (entries) => {
-    const { width, height } = entries[0].contentRect;
-    const canvasInfo = initializeCanvas(canvasRef.current, { width, height });
-    syncDataState({ canvasInfo });
+  const handleResize = (entry) => {
+    const { contentWidth: width, contentHeight: height } = entry.metrics;
+    whenElementReady(() => canvasRef.current).then((element) => {
+      const canvasInfo = initializeCanvas(element, { width, height });
+      syncDataState({ canvasInfo });
+    });
   };
 
-  const debounceHandleResize = useMemo(() => debounceWrapper(handleResize), []);
+  useElementResize(() => canvasParentRef.current, handleResize, {
+    triggerOnce: true,
+  });
 
   return (
     <div className="flex h-full">

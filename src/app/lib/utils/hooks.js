@@ -91,7 +91,7 @@ export function useElementResize(
 
       // 提前触发一次 onResize（使用模拟 entry）
       if (triggerOnce)
-        wrapperHandleResize({
+        handleResizeRef.current({
           element,
           metrics: extractStyleMetrics(element),
         });
