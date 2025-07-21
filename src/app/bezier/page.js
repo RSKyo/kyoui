@@ -16,6 +16,13 @@ import {
 } from "@/app/lib/canvas/transform";
 import { kyouiInSine_canvas } from "@/app/bezier/presets/gesture";
 import { useBroadcastChannel, useElementResize } from "@/app/lib/utils/hooks";
+import {
+  drawCircle,
+  drawGrid,
+  drawBezier,
+  drawBezierControlPolygon,
+  drawBezierControlPoints,
+} from "@/app/lib/canvas/drawing";
 
 export default function BezierPage() {
   const canvasParentRef = useRef(null);
@@ -30,6 +37,7 @@ export default function BezierPage() {
     includeXY: true,
     includeDXY: false,
   };
+
   const [canvasInfo, setCanvasInfo] = useState(null);
   const [sourcePoints, setSourcePoints] = useState(kyouiInSine_canvas);
   const [samples, setSamples] = useState(10);
@@ -74,11 +82,10 @@ export default function BezierPage() {
     if (isBeziersChanged) setBeziers(_beziers);
     if (isTimedValuesChanged) {
       setTimedValues(_timedValues);
-      bc.postMessage(_timedValues);
+      // bc.postMessage(_timedValues);
     }
   };
 
-  // 首次加载
   useEffect(() => {
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
@@ -88,75 +95,30 @@ export default function BezierPage() {
 
   useEffect(() => {
     if (!canvasInfo) return;
-
-    const { width, height } = canvasInfo;
-    const ctx = canvasInfo.ctx;
+    const { ctx, width, height } = canvasInfo;
     canvasInfo.clear();
 
-    // background grid
-    ctx.strokeStyle = "#eee";
-    ctx.lineWidth = 1;
-    for (let x = 0; x < width; x += 50) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-    }
-    for (let y = 0; y < height; y += 50) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
-  }, [canvasInfo]);
+    // draw grid
+    drawGrid(ctx, width, height, 50, { color: "#eee" });
 
-  useEffect(() => {
-    if (!beziers) return;
-
-    const ctx = canvasInfo.ctx;
-    beziers.forEach((points) => {
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      ctx.bezierCurveTo(
-        points[1].x,
-        points[1].y,
-        points[2].x,
-        points[2].y,
-        points[3].x,
-        points[3].y
-      );
-      ctx.strokeStyle = "blue";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      ctx.setLineDash([5, 5]);
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      ctx.lineTo(points[1].x, points[1].y);
-      ctx.lineTo(points[2].x, points[2].y);
-      ctx.lineTo(points[3].x, points[3].y);
-      ctx.strokeStyle = "gray";
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      points.forEach((pt, i) => {
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
-        ctx.fillStyle = i === 0 || i === 3 ? "black" : "red";
-        ctx.fill();
+    // draw beziers
+    beziers.forEach(([p0, p1, p2, p3]) => {
+      drawBezier(ctx, p0, p1, p2, p3, { color: "blue" });
+      drawBezierControlPolygon(ctx, p0, p1, p2, p3, {
+        color: "gray",
+        dash: [5, 5],
+      });
+      drawBezierControlPoints(ctx, p0, p1, p2, p3, {
+        p0: { radius: 4, fill: { color: "black" } },
+        p1: { radius: 4, fill: { color: "red" } },
+        p2: { radius: 4, fill: { color: "red" } },
+        p3: { radius: 4, fill: { color: "black" } },
       });
     });
-  }, [beziers]);
 
-  useEffect(() => {
-    if (!timedValues) return;
-
-    const ctx = canvasInfo.ctx;
+    // draw timedValues
     timedValues.forEach(({ x, y }) => {
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = "green";
-      ctx.fill();
+      drawCircle(ctx, x, y, 2, { fill: { color: "red" } });
     });
   }, [timedValues]);
 
@@ -209,9 +171,7 @@ export default function BezierPage() {
     });
   };
 
-  useElementResize(() => canvasParentRef.current, handleResize, {
-    triggerOnce: true,
-  });
+  useElementResize(() => canvasParentRef.current, handleResize);
 
   return (
     <div className="flex h-full">

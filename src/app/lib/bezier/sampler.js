@@ -1,5 +1,10 @@
 import { config } from "@/app/lib/config";
-import { flattenArray, roundFixed, applyJitter, safeDiv } from "@/app/lib/utils/common";
+import {
+  flattenArray,
+  roundFixed,
+  applyJitter,
+  safeDiv,
+} from "@/app/lib/utils/common";
 import {
   getSegments,
   evaluateBezierPoint,
@@ -74,7 +79,7 @@ export function sampleBezierPoints(beziers, samples, { axis } = {}) {
   });
 
   const flatPoints = [...flattenArray(points)];
-  return axis ? { points:flatPoints, maxAxisAbs } : flatPoints;
+  return axis ? { points: flatPoints, maxAxisAbs } : flatPoints;
 }
 
 export function sampleBezierTimedValues(beziers, samples, options = {}) {
@@ -92,18 +97,26 @@ export function sampleBezierTimedValues(beziers, samples, options = {}) {
   const { points, maxAxisAbs } = sampleBezierPoints(beziers, samples, { axis });
 
   return points.map((p, i) => {
-    const valueBase =
+    const value =
       minValue + (maxValue - minValue) * safeDiv(p[axis], maxAxisAbs);
-    const jitteredValue = applyJitter(valueBase, valueJitterRatio);
-    const value = Math.max(minValue, Math.round(jitteredValue));
+    let jitteredValue = applyJitter(value, valueJitterRatio);
+    jitteredValue = Math.max(minValue, jitteredValue);
 
-    const timeBase = i * interval;
-    const jitteredTime = applyJitter(timeBase, intervalJitterRatio, interval);
-    const time = Math.max(0, Math.round(jitteredTime));
+    const time = i * interval;
+    let jitteredTime = applyJitter(time, intervalJitterRatio, interval);
+    jitteredTime = Math.max(0, jitteredTime);
 
     const xy = includeXY ? { x: p.x, y: p.y } : {};
     const dxy = includeDXY ? { dx: p.dx, dy: p.dy } : {};
 
-    return { progress: p.progress, time, value, ...xy, ...dxy };
+    return {
+      progress: p.progress,
+      time: roundFixed(time),
+      jitteredTime: roundFixed(jitteredTime),
+      value: roundFixed(value),
+      jitteredValue: roundFixed(jitteredValue),
+      ...xy,
+      ...dxy,
+    };
   });
 }

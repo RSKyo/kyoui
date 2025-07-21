@@ -62,7 +62,6 @@ export function useElementResize(
   getElement,
   handleResize,
   {
-    triggerOnce = false,
     isDebounce = true,
     delay,
     isThrottle = false,
@@ -89,14 +88,6 @@ export function useElementResize(
     whenElementReady(getElement).then((element) => {
       if (!element) return;
 
-      // 提前触发一次 onResize（使用模拟 entry）
-      if (triggerOnce)
-        handleResizeRef.current({
-          element,
-          metrics: extractStyleMetrics(element),
-        });
-
-      // 添加监听
       observer = new ResizeObserver((entries) => {
         for (const entry of entries) {
           wrapperHandleResize({
