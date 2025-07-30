@@ -54,6 +54,18 @@ export const applyFillStyle = (ctx, fill = {}) => {
   ctx.fillStyle = convertToRgba(color, alpha);
 };
 
+export const applyTextStyle = (ctx, text = {}) => {
+  const {
+    font = "14px sans-serif",
+    align = "left",
+    baseline = "alphabetic",
+  } = text;
+
+  ctx.font = font;
+  ctx.textAlign = align;
+  ctx.textBaseline = baseline;
+};
+
 export const drawCircle = (
   ctx,
   x,
@@ -145,4 +157,31 @@ export const drawGrid = (ctx, width, height, spacing = 50, style = {}) => {
   for (let y = 0; y <= limitY; y += spacing) {
     drawLine(ctx, 0, y, width, y, style);
   }
+};
+
+export const drawText = (
+  ctx,
+  text,
+  x,
+  y,
+  {
+    textStyle = {},
+    fill = { color: "black" },
+    stroke = null, // e.g. { color: 'red', width: 1 }
+  } = {}
+) => {
+  ctx.save();
+  applyTextStyle(ctx, textStyle);
+
+  if (fill?.color) {
+    applyFillStyle(ctx, fill);
+    ctx.fillText(text, x, y);
+  }
+
+  if (stroke?.color) {
+    applyStrokeStyle(ctx, stroke);
+    ctx.strokeText(text, x, y);
+  }
+
+  ctx.restore();
 };

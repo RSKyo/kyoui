@@ -2,6 +2,8 @@ import { useMemo, useEffect, useRef } from "react";
 import { whenElementReady } from "@/app/lib/utils/dom";
 import { debounceWrapper, throttleWrapper } from "@/app/lib/utils/timing";
 
+const isFn = (fn) => typeof fn === "function";
+
 export function useBroadcastChannel(name) {
   const bc = useMemo(() => new BroadcastChannel(name), [name]);
 
@@ -61,12 +63,7 @@ const extractStyleMetrics = (element) => {
 export function useElementResize(
   getElement,
   handleResize,
-  {
-    isDebounce = true,
-    delay,
-    isThrottle = false,
-    interval,
-  } = {}
+  { isDebounce = true, delay, isThrottle = false, interval } = {}
 ) {
   const handleResizeRef = useRef(handleResize);
   useEffect(() => {
@@ -104,3 +101,67 @@ export function useElementResize(
     };
   }, []);
 }
+
+export const useRefFn = (fn) => {
+  const fnRef = useRef(fn);
+  useEffect(() => {
+    fnRef.current = fn;
+  }, [fn]);
+  return useCallback((...args) => fnRef.current(...args), []);
+};
+
+export const useElementReady = (
+  getTargetElement,
+  handleReady,
+  { handleClean, isStateful = false } = {}
+) => {
+  const targetRef = useRef(null);
+  const ready = isFn(handleReady)
+    ? isStateful
+      ? useRefFn(handleReady)
+      : handleReady
+    : undefined;
+  const clean = isFn(handleClean)
+    ? isStateful
+      ? useRefFn(handleClean)
+      : handleClean
+    : undefined;
+
+  useEffect(() => {
+    whenElementReady(getTargetElement).then((element) => {
+      targetRef.current = element;
+      if (ready) ready(element);
+    });
+
+    return () => {
+      if (clean) clean(targetRef.current);
+    };
+  }, []);
+};
+
+export const useEventListener = (
+  getTargetElement,
+  eventType,
+  handleListener,
+  { eventOptions, isStateful = false } = {}
+) => {
+  const targetRef = useRef(null);
+  const listener = isFn(handleListener)
+    ? isStateful
+      ? useRefFn(handleListener)
+      : handleListener
+    : undefined;
+
+  useEffect(() => {
+    whenElementReady(getTargetElement).then((target) => {
+      targetRef.current = target;
+      if (target && listener)
+        target.addEventListener(eventType, listener, eventOptions);
+    });
+    return () => {
+      const target = targetRef.current;
+      if (target && listener)
+        target.removeEventListener(eventType, listener, eventOptions);
+    };
+  }, []);
+};

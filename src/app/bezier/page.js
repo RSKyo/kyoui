@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import { config } from "@/app/lib/config";
+import { roundFixed } from "@/app/lib/utils/common";
 import { whenElementReady } from "@/app/lib/utils/dom";
 import { throttleWrapper, debounceWrapper } from "@/app/lib/utils/timing";
 import { locateHitPoint } from "@/app/lib/utils/points";
@@ -15,27 +16,30 @@ import {
   mapFromCanvas,
 } from "@/app/lib/canvas/transform";
 import { kyouiInSine_canvas } from "@/app/bezier/presets/gesture";
-import { useBroadcastChannel, useElementResize } from "@/app/lib/utils/hooks";
+import {
+  useBroadcastChannel,
+  useElementResize,
+  useEventListener,
+} from "@/app/lib/utils/hooks";
 import {
   drawCircle,
   drawGrid,
   drawBezier,
   drawBezierControlPolygon,
   drawBezierControlPoints,
+  drawText,
 } from "@/app/lib/canvas/drawing";
 
 export default function BezierPage() {
   const canvasParentRef = useRef(null);
   const canvasRef = useRef(null);
   const defaultSamplingOptions = {
-    minValue: 1,
+    minValue: 0,
     maxValue: 50,
     valueJitterRatio: 0.3,
-    interval: 100,
-    intervalJitterRatio: 0.2,
-    axis: config.constants.AXIS.DY,
-    includeXY: true,
-    includeDXY: false,
+    minTime: 0,
+    maxTime: 1000,
+    timeJitterRatio: 0,
   };
 
   const [canvasInfo, setCanvasInfo] = useState(null);
@@ -82,16 +86,9 @@ export default function BezierPage() {
     if (isBeziersChanged) setBeziers(_beziers);
     if (isTimedValuesChanged) {
       setTimedValues(_timedValues);
-      // bc.postMessage(_timedValues);
+      bc.postMessage(_timedValues);
     }
   };
-
-  useEffect(() => {
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
 
   useEffect(() => {
     if (!canvasInfo) return;
@@ -117,8 +114,13 @@ export default function BezierPage() {
     });
 
     // draw timedValues
-    timedValues.forEach(({ x, y }) => {
+    timedValues.forEach(({ x, y, dx, dy, time, value, jitteredValue }) => {
       drawCircle(ctx, x, y, 2, { fill: { color: "red" } });
+      // drawText(ctx, value, x + 5, y);
+
+      const y2 = y + roundFixed(((value - jitteredValue) * dy) / value);
+      drawCircle(ctx, x, y2, 2, { fill: { color: "green" } });
+      drawText(ctx, jitteredValue, x + 5, y2);
     });
   }, [timedValues]);
 
@@ -152,6 +154,8 @@ export default function BezierPage() {
   const handleMouseUp = () => {
     dragging.current = { segmentIndex: null, pointIndex: null };
   };
+
+  useEventListener(() => window, "mouseup", handleMouseUp);
 
   const handleUpdateBezier = (beziers, segmentIndex, pointIndex, x, y) => {
     const newBeziers = updateBezier(beziers, segmentIndex, pointIndex, x, y);
