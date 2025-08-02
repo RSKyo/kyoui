@@ -1,10 +1,8 @@
 "use client";
 
-import { useRef, useState, useEffect, useMemo, useCallback } from "react";
-import { config } from "@/app/lib/config";
+import { useRef, useState, useEffect } from "react";
 import { roundFixed } from "@/app/lib/utils/common";
 import { whenElementReady } from "@/app/lib/utils/dom";
-import { throttleWrapper, debounceWrapper } from "@/app/lib/utils/timing";
 import { locateHitPoint } from "@/app/lib/utils/points";
 import { sampleBezierTimedValues } from "@/app/lib/bezier/sampler";
 import { updateBezier } from "@/app/lib/bezier/updater";
@@ -13,12 +11,12 @@ import {
   getCanvasTransform,
   getCanvasMouseInfo,
   mapToCanvas,
-  mapFromCanvas,
 } from "@/app/lib/canvas/transform";
 import { kyouiInSine_canvas } from "@/app/bezier/presets/gesture";
 import {
+  useThrottleFn,
   useBroadcastChannel,
-  useElementResize,
+  useDebouncedResizeObserver,
   useEventListener,
 } from "@/app/lib/utils/hooks";
 import {
@@ -33,18 +31,18 @@ import {
 export default function BezierPage() {
   const canvasParentRef = useRef(null);
   const canvasRef = useRef(null);
-  const defaultSamplingOptions = {
+
+  const [canvasInfo, setCanvasInfo] = useState(null);
+  const [sourcePoints, setSourcePoints] = useState(kyouiInSine_canvas);
+  const [samples, setSamples] = useState(10);
+  const [timedValuesOptions, setTimedValuesOptions] = useState({
     minValue: 0,
     maxValue: 50,
     valueJitterRatio: 0.3,
     minTime: 0,
     maxTime: 1000,
     timeJitterRatio: 0,
-  };
-
-  const [canvasInfo, setCanvasInfo] = useState(null);
-  const [sourcePoints, setSourcePoints] = useState(kyouiInSine_canvas);
-  const [samples, setSamples] = useState(10);
+  });
 
   const [canvasTransform, setCanvasTransform] = useState(null);
   const [beziers, setBeziers] = useState(null);
@@ -58,16 +56,21 @@ export default function BezierPage() {
     const isCanvasInfoChanged = "canvasInfo" in options;
     const isSourcePointsChanged = "sourcePoints" in options;
     const isSamplesChanged = "samples" in options;
+    const isTimedValuesOptionsChanged = "timedValuesOptions" in options;
     const isCanvasTransformChanged =
       isCanvasInfoChanged || isSourcePointsChanged;
     const isBeziersChanged = isCanvasTransformChanged || "beziers" in options;
-    const isTimedValuesChanged = isBeziersChanged || isSamplesChanged;
+    const isTimedValuesChanged =
+      isBeziersChanged || isSamplesChanged || isTimedValuesOptionsChanged;
 
     const _canvasInfo = isCanvasInfoChanged ? options.canvasInfo : canvasInfo;
     const _sourcePoints = isSourcePointsChanged
       ? options.sourcePoints
       : sourcePoints;
     const _samples = isSamplesChanged ? options.samples : samples;
+    const _timedValuesOptions = isTimedValuesOptionsChanged
+      ? options.timedValuesOptions
+      : timedValuesOptions;
 
     const _canvasTransform = isCanvasTransformChanged
       ? getCanvasTransform(_sourcePoints, _canvasInfo)
@@ -76,12 +79,13 @@ export default function BezierPage() {
       ? mapToCanvas(_sourcePoints, _canvasTransform)
       : options.beziers ?? beziers;
     const _timedValues = isTimedValuesChanged
-      ? sampleBezierTimedValues(_beziers, _samples, defaultSamplingOptions)
+      ? sampleBezierTimedValues(_beziers, _samples, _timedValuesOptions)
       : timedValues;
 
     if (isCanvasInfoChanged) setCanvasInfo(_canvasInfo);
     if (isSourcePointsChanged) setSourcePoints(_sourcePoints);
     if (isSamplesChanged) setSamples(_samples);
+    if (isTimedValuesOptionsChanged) setTimedValuesOptions(_timedValuesOptions);
     if (isCanvasTransformChanged) setCanvasTransform(_canvasTransform);
     if (isBeziersChanged) setBeziers(_beziers);
     if (isTimedValuesChanged) {
@@ -138,6 +142,15 @@ export default function BezierPage() {
     syncDataState({ samples: newSamples });
   };
 
+  const handleTimedValuesOptionsChanged = (e) => {
+    try {
+      const newTimedValuesOptions = JSON.parse(e.target.value);
+      syncDataState({ timedValuesOptions: newTimedValuesOptions });
+    } catch (err) {
+      e.target.value = JSON.stringify(sourcePoints);
+    }
+  };
+
   const handleMouseDown = (e) => {
     const { x, y } = getCanvasMouseInfo(e, canvasInfo);
     const match = locateHitPoint(beziers, x, y);
@@ -162,10 +175,7 @@ export default function BezierPage() {
     syncDataState({ beziers: newBeziers });
   };
 
-  const throttleUpdateBezier = useMemo(
-    () => throttleWrapper(handleUpdateBezier),
-    []
-  );
+  const throttleUpdateBezier = useThrottleFn(handleUpdateBezier);
 
   const handleResize = (entry) => {
     const { contentWidth: width, contentHeight: height } = entry.metrics;
@@ -175,14 +185,14 @@ export default function BezierPage() {
     });
   };
 
-  useElementResize(() => canvasParentRef.current, handleResize);
+  useDebouncedResizeObserver(() => canvasParentRef.current, handleResize, 300);
 
   return (
     <div className="flex h-full">
       {/* 左侧固定宽度面板 */}
       <div className="w-[280px] bg-white border-r border-gray-200 p-4 space-y-2 flex flex-col">
         {/* 源点输入 */}
-        <div className="space-y-1">
+        <div className="space-y-1 flex flex-col">
           <label className="block text-xs text-gray-500">
             源曲线点 (Points)
           </label>
@@ -206,8 +216,20 @@ export default function BezierPage() {
             className="input-basic w-full"
           />
         </div>
+        {/* 其他参数 */}
+        <div className="space-y-1 flex flex-col">
+          <label className="block text-xs text-gray-500">
+            其他参数 (Options)
+          </label>
+          <textarea
+            defaultValue={JSON.stringify(timedValuesOptions, null, 2)}
+            onBlur={handleTimedValuesOptionsChanged}
+            rows={6}
+            className="input-basic w-full font-mono text-xs"
+          />
+        </div>
         {/* 采样结果 */}
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-hidden space-y-1 flex flex-col">
           <label className="block text-xs text-gray-500">
             采样结果 (Sampled Timed Values)
           </label>

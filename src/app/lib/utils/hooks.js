@@ -1,21 +1,88 @@
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useCallback } from "react";
 import { whenElementReady } from "@/app/lib/utils/dom";
-import { debounceWrapper, throttleWrapper } from "@/app/lib/utils/timing";
 
-const isFn = (fn) => typeof fn === "function";
+/**
+ * 返回一个稳定函数引用，始终调用最新的 fn。
+ * 适用于事件监听、定时器、回调传递等场景。
+ */
+export const useRefFn = (fn) => {
+  const fnRef = useRef(fn);
+  useEffect(() => {
+    fnRef.current = fn;
+  }, [fn]);
 
-export function useBroadcastChannel(name) {
-  const bc = useMemo(() => new BroadcastChannel(name), [name]);
+  return useCallback((...args) => {
+    if (typeof fnRef.current === "function") return fnRef.current(...args);
+  }, []);
+};
+
+/**
+ * 返回一个防抖函数，在 delay 毫秒后调用 fn。
+ * 调用间隔内如有新调用会重置计时。
+ */
+export const useDebounceFn = (fn, delay = 300) => {
+  const fnRef = useRefFn(fn);
+  const timerRef = useRef(null);
 
   useEffect(() => {
+    return () => clearTimeout(timerRef.current);
+  }, []);
+
+  return useCallback(
+    (...args) => {
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        fnRef(...args);
+      }, delay);
+    },
+    [delay]
+  );
+};
+
+/**
+ * 返回一个节流函数，在 interval 间隔内最多调用一次 fn。
+ */
+export const useThrottleFn = (fn, interval = 100) => {
+  const fnRef = useRefFn(fn);
+  const lastTimeRef = useRef(0);
+
+  return useCallback(
+    (...args) => {
+      const now = Date.now();
+      if (now - lastTimeRef.current >= interval) {
+        lastTimeRef.current = now;
+        fnRef(...args);
+      }
+    },
+    [interval]
+  );
+};
+
+/**
+ * 创建一个 BroadcastChannel 并监听 message 消息。
+ * 会在卸载时自动移除监听并关闭频道。
+ * onmessage 会始终调用最新的回调函数。
+ */
+export const useBroadcastChannel = (name, onmessage) => {
+  const bc = useMemo(() => new BroadcastChannel(name), [name]);
+  const onMessageRef = useRefFn(onmessage);
+
+  useEffect(() => {
+    const handler = (e) => onMessageRef(e);
+    bc.addEventListener("message", handler);
+
     return () => {
+      bc.removeEventListener("message", handler);
       bc.close();
     };
-  }, [bc]);
+  }, [name]);
 
   return bc;
-}
+};
 
+/**
+ * 提取元素尺寸、边距、边框、内边距等完整信息。
+ */
 const extractStyleMetrics = (element) => {
   const offsetWidth = element.offsetWidth;
   const offsetHeight = element.offsetHeight;
@@ -60,39 +127,24 @@ const extractStyleMetrics = (element) => {
   };
 };
 
-export function useElementResize(
-  getElement,
-  handleResize,
-  { isDebounce = true, delay, isThrottle = false, interval } = {}
-) {
-  const handleResizeRef = useRef(handleResize);
-  useEffect(() => {
-    handleResizeRef.current = handleResize;
-  }, [handleResize]);
-
-  const callLatest = (...args) => {
-    handleResizeRef.current(...args);
-  };
-
-  const wrapperHandleResize = useMemo(() => {
-    if (isDebounce) return debounceWrapper(callLatest, delay);
-    if (isThrottle) return throttleWrapper(callLatest, interval);
-    return callLatest;
-  }, [isDebounce, isThrottle, delay, interval]);
-
+/**
+ * 使用 ResizeObserver 监听元素尺寸变化。
+ */
+export const useResizeObserver = (getElement, onResize) => {
   useEffect(() => {
     let observer;
     whenElementReady(getElement).then((element) => {
       if (!element) return;
 
-      observer = new ResizeObserver((entries) => {
+      const resizeCallback = (entries) => {
         for (const entry of entries) {
-          wrapperHandleResize({
+          onResize({
             element: entry.target,
             metrics: extractStyleMetrics(entry.target),
           });
         }
-      });
+      };
+      observer = new ResizeObserver(resizeCallback);
       observer.observe(element);
     });
 
@@ -100,68 +152,74 @@ export function useElementResize(
       if (observer) observer.disconnect();
     };
   }, []);
-}
-
-export const useRefFn = (fn) => {
-  const fnRef = useRef(fn);
-  useEffect(() => {
-    fnRef.current = fn;
-  }, [fn]);
-  return useCallback((...args) => fnRef.current(...args), []);
 };
 
-export const useElementReady = (
-  getTargetElement,
-  handleReady,
-  { handleClean, isStateful = false } = {}
+/**
+ * 防抖版本的 useResizeObserver。
+ */
+export const useDebouncedResizeObserver = (
+  getElement,
+  onResize,
+  delay = 300
 ) => {
-  const targetRef = useRef(null);
-  const ready = isFn(handleReady)
-    ? isStateful
-      ? useRefFn(handleReady)
-      : handleReady
-    : undefined;
-  const clean = isFn(handleClean)
-    ? isStateful
-      ? useRefFn(handleClean)
-      : handleClean
-    : undefined;
+  const debounced = useDebounceFn(onResize, delay);
+  useResizeObserver(getElement, debounced);
+};
+
+/**
+ * 节流版本的 useResizeObserver。
+ */
+export const useThrottledResizeObserver = (
+  getElement,
+  onResize,
+  interval = 100
+) => {
+  const throttled = useThrottleFn(onResize, interval);
+  useResizeObserver(getElement, throttled);
+};
+
+/**
+ * 等待元素准备好后触发 onReady，并在卸载时触发 onClean。
+ */
+export const useElementReady = (getElement, onReady, onClean) => {
+  const elementRef = useRef(null);
+  const handleReadyRef = useRefFn(onReady);
+  const handleCleanRef = useRefFn(onClean);
 
   useEffect(() => {
-    whenElementReady(getTargetElement).then((element) => {
-      targetRef.current = element;
-      if (ready) ready(element);
+    whenElementReady(getElement).then((element) => {
+      elementRef.current = element;
+      handleReadyRef(element);
     });
 
     return () => {
-      if (clean) clean(targetRef.current);
+      const element = elementRef.current;
+      if (element) handleCleanRef(element);
     };
   }, []);
 };
 
+/**
+ * 在元素准备好后添加事件监听器，并在卸载时移除。
+ */
 export const useEventListener = (
-  getTargetElement,
+  getElement,
   eventType,
-  handleListener,
-  { eventOptions, isStateful = false } = {}
+  onListener,
+  eventOptions
 ) => {
-  const targetRef = useRef(null);
-  const listener = isFn(handleListener)
-    ? isStateful
-      ? useRefFn(handleListener)
-      : handleListener
-    : undefined;
+  const elementRef = useRef(null);
+  const handleListenerRef = useRefFn(onListener);
 
   useEffect(() => {
-    whenElementReady(getTargetElement).then((target) => {
-      targetRef.current = target;
-      if (target && listener)
-        target.addEventListener(eventType, listener, eventOptions);
+    whenElementReady(getElement).then((element) => {
+      elementRef.current = element;
+      element.addEventListener(eventType, handleListenerRef, eventOptions);
     });
     return () => {
-      const target = targetRef.current;
-      if (target && listener)
-        target.removeEventListener(eventType, listener, eventOptions);
+      const element = elementRef.current;
+      if (element)
+        element.removeEventListener(eventType, handleListenerRef, eventOptions);
     };
   }, []);
 };

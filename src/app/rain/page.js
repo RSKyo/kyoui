@@ -5,7 +5,10 @@ import { createFolio } from "@/app/lib/canvas/folio";
 import { whenElementReady } from "@/app/lib/utils/dom";
 import { debounceWrapper } from "@/app/lib/utils/timing";
 import { initializeCanvas } from "@/app/lib/canvas/transform";
-import {log} from "@/app/lib/utils/logger";
+import {
+  useBroadcastChannel,
+  useDebouncedResizeObserver,
+} from "@/app/lib/utils/hooks";
 
 export default function RainPage() {
   const canvasParentRef = useRef(null);
@@ -25,18 +28,9 @@ export default function RainPage() {
     onEnd: null,
   };
 
-  const bc = useMemo(() => new BroadcastChannel("sample-draw"), []);
-
   useEffect(() => {
-    whenElementReady(() => canvasRef.current).then((element) => {
-      setCanvasInfo(initializeCanvas(element));
-      setFolio(createFolio(folioOptions));
-    });
-    const observer = new ResizeObserver(debounceHandleResize);
-    observer.observe(canvasParentRef.current);
-    bc.onmessage = handleOnMessage;
+
     return () => {
-      observer.disconnect();
       folio.stop();
     };
   }, []);
@@ -48,17 +42,22 @@ export default function RainPage() {
     }
   }, [timedValues]);
 
-  const handleResize = (entries) => {
-    const { width, height } = entries[0].contentRect;
-    setCanvasInfo(initializeCanvas(canvasRef.current, { width, height }));
-  };
-
-  const debounceHandleResize = useMemo(() => debounceWrapper(handleResize), []);
-
-
-  const handleOnMessage = (event) => {
+  const handleMessage = (event) => {
     setTimedValues(event.data);
   };
+
+  useBroadcastChannel("sample-draw", handleMessage);
+
+  const handleResize = (entry) => {
+    const { contentWidth: width, contentHeight: height } = entry.metrics;
+    setCanvasInfo(initializeCanvas(canvasRef.current, { width, height }));
+    whenElementReady(() => canvasRef.current).then((element) => {
+      const canvasInfo = initializeCanvas(element, { width, height });
+      setCanvasInfo(canvasInfo);
+    });
+  };
+
+  useDebouncedResizeObserver(() => canvasParentRef.current, handleResize, 300);
 
   return (
     <div className="flex flex-col h-full">
