@@ -3,12 +3,13 @@
 import { useRef, useEffect, useState, useMemo } from "react";
 import { createFolio } from "@/app/lib/canvas/folio";
 import { whenElementReady } from "@/app/lib/utils/dom";
-import { debounceWrapper } from "@/app/lib/utils/timing";
 import { initializeCanvas } from "@/app/lib/canvas/transform";
 import {
+  useRefFn,
   useBroadcastChannel,
   useDebouncedResizeObserver,
 } from "@/app/lib/utils/hooks";
+import { drawCircle } from "@/app/lib/canvas/drawing";
 
 export default function RainPage() {
   const canvasParentRef = useRef(null);
@@ -18,29 +19,27 @@ export default function RainPage() {
   const [timedValues, setTimedValues] = useState(null);
   const [folio, setFolio] = useState(null);
 
-  const folioOptions = {
-    duration: 0,
-    repeat: 1,
-    onStart: null,
-    onFrame: null,
-    onRepeat: null,
-    onStop: null,
-    onEnd: null,
-  };
+  const handleStartRef = useRefFn(() => {
+    canvasInfo.clear();
+  });
 
-  useEffect(() => {
+  const handleBeforeFrameRef = useRefFn((elapsed) => {
+    canvasInfo.clear();
+  });
 
-    return () => {
-      folio.stop();
-    };
-  }, []);
+  const handleUpdaterRef = useRefFn((elapsed, { __data }) => {
+    if (!__data) return;
+    return __data.filter((o) => o.time < elapsed);
+  });
 
-  useEffect(() => {
-    if (timedValues) {
-      console.log("✅ B 页面终于拿到值了", timedValues);
-      // 你可以在这里触发 folio 渲染或其他副作用
-    }
-  }, [timedValues]);
+  const handleRenderRef = useRefFn((elapsed, { data }) => {
+    if (!data) return;
+    if (!canvasInfo?.ctx) return;
+    const { ctx } = canvasInfo;
+    data.forEach((o) => {
+      drawCircle(ctx, o.x, o.y, 5, { fill: { color: "red" } });
+    });
+  });
 
   const handleMessage = (event) => {
     setTimedValues(event.data);
@@ -58,6 +57,28 @@ export default function RainPage() {
   };
 
   useDebouncedResizeObserver(() => canvasParentRef.current, handleResize, 300);
+
+  useEffect(() => {
+    whenElementReady(() => canvasRef.current).then((element) => {
+      const folio = createFolio({
+        onStart: handleStartRef,
+        onBeforeFrame: handleBeforeFrameRef,
+      });
+      folio.addDrawable(timedValues, handleUpdaterRef, handleRenderRef);
+      setFolio(folio);
+    });
+
+    return () => {
+      if (folio) folio.stop();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (timedValues && folio) {
+      folio.stop(false);
+      folio.setDataAt(0, timedValues);
+    }
+  }, [timedValues]);
 
   return (
     <div className="flex flex-col h-full">

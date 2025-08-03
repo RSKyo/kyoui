@@ -66,3 +66,14 @@ export const filterEntries = (obj, fn) =>
 export const isEqualJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export const isEqualRef = (a, b) => Object.is(a, b);
 
+export const safeClone = (value) => {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    console.warn("Fallback clone failed, data may be corrupted");
+    return value;
+  }
+};
