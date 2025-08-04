@@ -1,4 +1,4 @@
-import { config } from "@/app/lib/config";
+import { config } from "../config";
 
 // 获取调用者函数名（用于 log 输出定位调用源）
 function getCallerInfo() {

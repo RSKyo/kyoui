@@ -1,15 +1,17 @@
 "use client";
 
-import { useRef, useEffect, useState, useMemo } from "react";
-import { createFolio } from "@/app/lib/canvas/folio";
-import { whenElementReady } from "@/app/lib/utils/dom";
-import { initializeCanvas } from "@/app/lib/canvas/transform";
+import { useRef, useEffect, useState } from "react";
+import {
+  createFolio,
+  whenElementReady,
+  initializeCanvas,
+  drawCircle,
+} from "@/lib";
 import {
   useRefFn,
   useBroadcastChannel,
   useDebouncedResizeObserver,
-} from "@/app/lib/utils/hooks";
-import { drawCircle } from "@/app/lib/canvas/drawing";
+} from "@/hooks";
 
 export default function RainPage() {
   const canvasParentRef = useRef(null);
@@ -45,7 +47,9 @@ export default function RainPage() {
     setTimedValues(event.data);
   };
 
-  useBroadcastChannel("sample-draw", handleMessage);
+  const channel = useBroadcastChannel("sample-draw", {
+    onMessage: handleMessage,
+  });
 
   const handleResize = (entry) => {
     const { contentWidth: width, contentHeight: height } = entry.metrics;
@@ -66,6 +70,7 @@ export default function RainPage() {
       });
       folio.addDrawable(timedValues, handleUpdaterRef, handleRenderRef);
       setFolio(folio);
+      channel.postMessage("timedValues");
     });
 
     return () => {

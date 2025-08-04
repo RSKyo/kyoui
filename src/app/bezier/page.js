@@ -1,24 +1,21 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { roundFixed } from "@/app/lib/utils/common";
-import { whenElementReady } from "@/app/lib/utils/dom";
-import { locateHitPoint } from "@/app/lib/utils/points";
-import { sampleBezierTimedValues } from "@/app/lib/bezier/sampler";
-import { updateBezier } from "@/app/lib/bezier/updater";
+// 通用工具
+import { roundFixed, whenElementReady } from "@/lib/utils";
+
+// 画布与几何
 import {
+  locateHitPoint,
+  sampleBezierTimedValues,
+  updateBezier,
   initializeCanvas,
   getCanvasTransform,
   getCanvasMouseInfo,
   mapToCanvas,
-} from "@/app/lib/canvas/transform";
-import { kyouiInSine_canvas } from "@/app/bezier/presets/gesture";
-import {
-  useThrottleFn,
-  useBroadcastChannel,
-  useDebouncedResizeObserver,
-  useEventListener,
-} from "@/app/lib/utils/hooks";
+} from "@/lib/bezier";
+
+// 绘图工具
 import {
   drawCircle,
   drawGrid,
@@ -26,7 +23,18 @@ import {
   drawBezierControlPolygon,
   drawBezierControlPoints,
   drawText,
-} from "@/app/lib/canvas/drawing";
+} from "@/lib/drawing";
+
+// 预设
+import { kyouiInSine_canvas } from "./presets/gesture";
+
+// hooks
+import {
+  useThrottleFn,
+  useBroadcastChannel,
+  useDebouncedResizeObserver,
+  useEventListener,
+} from "@/hooks";
 
 export default function BezierPage() {
   const canvasParentRef = useRef(null);
@@ -48,7 +56,17 @@ export default function BezierPage() {
   const [beziers, setBeziers] = useState(null);
   const [timedValues, setTimedValues] = useState(null);
 
-  const bc = useBroadcastChannel("sample-draw");
+  const handleMessage = (event) => {
+    test();
+    if (event.data === "timedValues" && timedValues) {
+      channel.postMessage(timedValues);
+    }
+  };
+  const test = () => {};
+
+  const channel = useBroadcastChannel("sample-draw", {
+    onMessage: handleMessage,
+  });
 
   const dragging = useRef({ segmentIndex: null, pointIndex: null });
 
@@ -90,7 +108,7 @@ export default function BezierPage() {
     if (isBeziersChanged) setBeziers(_beziers);
     if (isTimedValuesChanged) {
       setTimedValues(_timedValues);
-      bc.postMessage(_timedValues);
+      channel.postMessage(_timedValues);
     }
   };
 

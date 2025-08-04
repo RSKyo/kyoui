@@ -1,5 +1,5 @@
-import { mirrorPoint } from "@/app/lib/utils/points";
-import { getSegments, getSegmentFlags } from "@/app/lib/bezier/core";
+import { mirrorPoint } from "../utils";
+import { getSegments, getSegmentFlags } from "./core";
 
 // 更新起点 P0，同时联动前段末尾控制点和当前段控制点 P1
 function updatedP0(beziers, segmentIndex, x, y, dx, dy, flags, set) {

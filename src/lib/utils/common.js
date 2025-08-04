@@ -1,4 +1,4 @@
-import { config } from "@/app/lib/config";
+import { config } from "../config";
 
 // 扁平化嵌套数组（生成器）
 export function* flattenArray(arr) {

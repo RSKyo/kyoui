@@ -1,6 +1,5 @@
-import { config } from "@/app/lib/config";
-import { mapNested, roundFixed, safeDiv, clamp } from "@/app/lib/utils/common";
-import { getBounds } from "@/app/lib/utils/geometry";
+import { config } from "../config";
+import { mapNested, roundFixed, safeDiv, clamp, getBounds } from "../utils";
 
 // 初始化 canvas 尺寸、缩放与上下文，并计算绘图区域和边距信息
 export function initializeCanvas(canvas, options = {}) {
@@ -64,7 +63,7 @@ export function initializeCanvas(canvas, options = {}) {
     bottom: h - py,
   };
 
-  const clear = ()=>{
+  const clear = () => {
     ctx.clearRect(0, 0, w, h);
   };
 

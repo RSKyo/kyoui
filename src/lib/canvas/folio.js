@@ -1,5 +1,4 @@
-import { generateId, safeClone } from "@/app/lib/utils/common";
-import { log } from "@/app/lib/utils/logger";
+import { generateId, safeClone, log } from "../utils";
 
 const isFn = (fn) => typeof fn === "function";
 

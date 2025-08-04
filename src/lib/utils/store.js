@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { log } from "@/app/lib/utils/logger";
+import { log } from "./logger";
 
 const filterEntries = (obj, fn) =>
   Object.fromEntries(Object.entries(obj).filter(([k, v]) => fn(k, v)));

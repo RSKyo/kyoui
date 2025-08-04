@@ -1,4 +1,4 @@
-import { flattenArray } from "@/app/lib/utils/common";
+import { flattenArray } from "./common";
 
 // 计算点数组（可嵌套）的边界值和范围
 export function getBounds(points) {

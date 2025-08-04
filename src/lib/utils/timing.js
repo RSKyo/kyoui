@@ -1,4 +1,4 @@
-import { config } from "@/app/lib/config";
+import { config } from "../config";
 
 // 防抖包装器：在操作停止一段时间后再执行回调函数
 export function debounceWrapper(fn, delay = config.DEBOUNCE_DELAY ?? 300) {

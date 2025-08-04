@@ -1,15 +1,3 @@
-/**
- * Bezier core utilities
- *
- * 修改履历：
- * - 2025-07-01 初始创建 evaluateBezierPoint、estimateArcLength 等基本方法
- * - 2025-07-02 添加 getSegmentFlags、mapSegmentsToFlags 用于判断连接关系
- * - 2025-07-03 新增 buildSamplingMeta 方法，用于生成采样元数据结构
- * - 2025-07-04 移除冗余 index 字段；flags 默认始终参与计算并输出
- */
-
-import { config } from "@/app/lib/config";
-
 // 判断是否为分段结构（二维点数组）
 export function isSegmented(points) {
   return Array.isArray(points[0]);
@@ -50,8 +38,9 @@ export function estimateArcLength(p0, p1, p2, p3, precision = 10) {
 }
 
 // 判断当前段与前后段的连接状态
+// tolerance 通常 0.01 为 UI 坐标对比；0.001~0.005 为动画路径连接（如贝塞尔）；
 export function getSegmentFlags(segs, i, options = {}) {
-  const { tolerance = config.TOLERANCE ?? 0.01, euclidean = false } = options;
+  const { tolerance = 0.01, euclidean = false } = options;
 
   const curr = segs[i];
   const prev = segs[i - 1];
@@ -73,10 +62,9 @@ export function getSegmentFlags(segs, i, options = {}) {
 }
 
 // 为所有段生成连接状态标签
+// tolerance 通常 0.01 为 UI 坐标对比；0.001~0.005 为动画路径连接（如贝塞尔）；
 export function mapSegmentsToFlags(segs, options = {}) {
-  const { tolerance = config.TOLERANCE ?? 0.01, euclidean = false } = options;
+  const { tolerance = 0.01, euclidean = false } = options;
 
   return segs.map((_, i) => getSegmentFlags(segs, i, { tolerance, euclidean }));
 }
-
-

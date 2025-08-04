@@ -1,7 +1,7 @@
 
 
-import { config } from "@/app/lib/config";
-import { mapNested } from "@/app/lib/utils/common";
+import { config } from "../config";
+import { mapNested } from "./common";
 
 // 判断是否为分段结构（二维点数组）
 export function isSegmented(points) {

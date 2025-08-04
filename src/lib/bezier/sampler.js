@@ -1,14 +1,5 @@
-import {
-  flattenArray,
-  roundFixed,
-  applyJitter,
-  safeDiv,
-} from "@/app/lib/utils/common";
-import {
-  getSegments,
-  evaluateBezierPoint,
-  getSegmentFlags,
-} from "@/app/lib/bezier/core";
+import { flattenArray, roundFixed, applyJitter, safeDiv } from "../utils";
+import { getSegments, evaluateBezierPoint, getSegmentFlags } from "./core";
 
 // 构建每段的采样偏移量、数量、连接信息等元数据
 function buildSamplingMeta(segs, samples) {
