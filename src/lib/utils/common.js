@@ -47,11 +47,6 @@ export function clamp(value, min, max) {
   return Math.max(min, Math.min(value, max));
 }
 
-// 对数值添加抖动扰动（以 base 为基础，在 ±jitterBase * ratio 范围内变动）
-export function applyJitter(base, ratio, { jitterBase = base } = {}) {
-  return base + jitterBase * (Math.random() * 2 - 1) * ratio;
-}
-
 export function generateId(prefix = "") {
   const id =
     typeof crypto?.randomUUID === "function"
@@ -62,9 +57,6 @@ export function generateId(prefix = "") {
 
 export const filterEntries = (obj, fn) =>
   Object.fromEntries(Object.entries(obj).filter(([k, v]) => fn(k, v)));
-
-export const isEqualJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-export const isEqualRef = (a, b) => Object.is(a, b);
 
 export const safeClone = (value) => {
   if (typeof structuredClone === "function") {

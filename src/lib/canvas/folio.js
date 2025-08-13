@@ -1,15 +1,17 @@
 import { generateId, safeClone, log } from "../utils";
 
-const isFn = (fn) => typeof fn === "function";
+function isFn(fn) {
+  return typeof fn === "function";
+}
 
-const FOLIO_STATUS = {
-  IDLE: "idle",
-  RUNNING: "running",
-  PAUSED: "paused",
-  STOPPED: "stopped",
-};
+export function createFolio(options = {}) {
+  const FOLIO_STATUS = {
+    IDLE: "idle",
+    RUNNING: "running",
+    PAUSED: "paused",
+    STOPPED: "stopped",
+  };
 
-export const createFolio = (options = {}) => {
   const {
     duration = 0,
     repeat = 1,
@@ -280,4 +282,4 @@ export const createFolio = (options = {}) => {
   };
 
   return folio;
-};
+}

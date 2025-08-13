@@ -23,7 +23,7 @@ import {
   drawBezierControlPolygon,
   drawBezierControlPoints,
   drawText,
-} from "@/lib/drawing";
+} from "@/lib/canvas";
 
 // 预设
 import { kyouiInSine_canvas } from "./presets/gesture";

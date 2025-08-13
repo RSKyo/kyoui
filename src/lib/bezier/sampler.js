@@ -1,4 +1,4 @@
-import { flattenArray, roundFixed, applyJitter, safeDiv } from "../utils";
+import { flattenArray, roundFixed, safeDiv } from "../utils";
 import { evaluateBezierPoint, getSegmentFlags } from "./core";
 
 // 构建每段的采样偏移量、数量、连接信息等元数据
@@ -39,6 +39,11 @@ function sampleBezier(p0, p1, p2, p3, samples, options = {}) {
       dy: roundFixed(dy),
     };
   });
+}
+
+// 对数值添加抖动扰动（以 base 为基础，在 ±jitterBase * ratio 范围内变动）
+function applyJitter(base, ratio, { jitterBase = base } = {}) {
+  return base + jitterBase * (Math.random() * 2 - 1) * ratio;
 }
 
 export function sampleBezierPoints(segs, samples) {

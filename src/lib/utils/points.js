@@ -5,7 +5,7 @@ import { mapNested } from "./common";
 
 // 判断两个点是否近似相等（坐标差值小于容差）
 export function isSamePoint(a, b, options = {}) {
-  const { tolerance = config.TOLERANCE ?? 0.01, euclidean = false } = options;
+  const { tolerance = 0.01, euclidean = false } = options;
 
   return euclidean
     ? Math.hypot(a.x - b.x, a.y - b.y) < tolerance
