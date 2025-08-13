@@ -1,6 +1,7 @@
 export {
-  isSegmented,
-  getSegments,
+  isBezierSegment,
+  isBezierSegmentArray,
+  toBezierSegments,
   evaluateBezierPoint,
   estimateArcLength,
   getSegmentFlags,

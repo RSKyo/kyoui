@@ -1,5 +1,5 @@
 import { mirrorPoint } from "../utils";
-import { getSegments, getSegmentFlags } from "./core";
+import { getSegmentFlags } from "./core";
 
 // 更新起点 P0，同时联动前段末尾控制点和当前段控制点 P1
 function updatedP0(beziers, segmentIndex, x, y, dx, dy, flags, set) {
@@ -103,14 +103,13 @@ const bezierUpdaters = {
 };
 
 export function updateBezier(
-  beziers,
+  segs,
   segmentIndex,
   pointIndex,
   x,
   y,
   { segmentFlags } = {}
 ) {
-  const segs = getSegments(beziers);
   const target = segs[segmentIndex][pointIndex];
 
   const changes = {};

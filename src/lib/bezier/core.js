@@ -1,11 +1,36 @@
-// 判断是否为分段结构（二维点数组）
-export function isSegmented(points) {
-  return Array.isArray(points[0]);
+function isSamePoint(p1, p2, { tolerance = 0.01, euclidean = false } = {}) {
+  return euclidean
+    ? Math.hypot(p1.x - p2.x, p1.y - p2.y) < tolerance
+    : Math.abs(p1.x - p2.x) < tolerance && Math.abs(p1.y - p2.y) < tolerance;
 }
 
-// 标准化为二维结构，统一处理格式
-export function getSegments(points) {
-  return isSegmented(points) ? points : [points];
+export function isBezierSegment(seg) {
+  if (!Array.isArray(seg) || seg.length !== 4) return false;
+  return seg.every(
+    (p) =>
+      p &&
+      typeof p === "object" &&
+      !Array.isArray(p) &&
+      typeof p.x === "number" &&
+      typeof p.y === "number"
+  );
+}
+
+export function isBezierSegmentArray(beziers) {
+  return (
+    Array.isArray(beziers) &&
+    beziers.length > 0 &&
+    beziers.every(isBezierSegment)
+  );
+}
+
+// 标准化为二维结构，统一处理格式。
+// 返回 null 表示格式非法（非一条或多条合法曲线段）
+export function toBezierSegments(beziers) {
+  if (!Array.isArray(beziers) || beziers.length === 0) return null;
+  if (isBezierSegment(beziers)) return [beziers];
+  if (isBezierSegmentArray(beziers)) return beziers;
+  return null;
 }
 
 // 计算三次贝塞尔曲线在参数 t (0~1) 下的坐标点

@@ -1,5 +1,5 @@
 import { flattenArray, roundFixed, applyJitter, safeDiv } from "../utils";
-import { getSegments, evaluateBezierPoint, getSegmentFlags } from "./core";
+import { evaluateBezierPoint, getSegmentFlags } from "./core";
 
 // 构建每段的采样偏移量、数量、连接信息等元数据
 function buildSamplingMeta(segs, samples) {
@@ -41,8 +41,7 @@ function sampleBezier(p0, p1, p2, p3, samples, options = {}) {
   });
 }
 
-export function sampleBezierPoints(beziers, samples) {
-  const segs = getSegments(beziers);
+export function sampleBezierPoints(segs, samples) {
   const origin = { ...segs[0][0] };
   const { meta, totalSamples } = buildSamplingMeta(segs, samples);
   let [maxAbsDX, maxAbsDY] = [-Infinity, -Infinity];
@@ -72,7 +71,7 @@ export function sampleBezierPoints(beziers, samples) {
   return { points: flatPoints, maxAbsDX, maxAbsDY };
 }
 
-export function sampleBezierTimedValues(beziers, samples, options = {}) {
+export function sampleBezierTimedValues(segs, samples, options = {}) {
   const {
     minValue = 0,
     maxValue = 100,
@@ -82,7 +81,7 @@ export function sampleBezierTimedValues(beziers, samples, options = {}) {
     timeJitterRatio = 0,
   } = options;
 
-  const { points, maxAbsDX, maxAbsDY } = sampleBezierPoints(beziers, samples);
+  const { points, maxAbsDX, maxAbsDY } = sampleBezierPoints(segs, samples);
 
   return points.map(({ progress, x, y, dx, dy }, i) => {
     const value = minValue + (maxValue - minValue) * safeDiv(dy, maxAbsDY);
