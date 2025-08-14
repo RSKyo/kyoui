@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 // 通用工具
-import { roundFixed, whenElementReady } from "@/lib/utils";
+import { toFixedNumber, whenElementReady } from "@/lib/utils";
 
 // 画布与几何
 import {
@@ -140,7 +140,7 @@ export default function BezierPage() {
       drawCircle(ctx, x, y, 2, { fill: { color: "red" } });
       // drawText(ctx, value, x + 5, y);
 
-      const y2 = y + roundFixed(((value - jitteredValue) * dy) / value);
+      const y2 = y + toFixedNumber(((value - jitteredValue) * dy) / value);
       drawCircle(ctx, x, y2, 2, { fill: { color: "green" } });
       drawText(ctx, jitteredValue, x + 5, y2);
     });

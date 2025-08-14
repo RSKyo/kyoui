@@ -24,17 +24,21 @@ export function mapNested(data, fn) {
   return fn(data);
 }
 
-const roundingMethods = {
-  round: Math.round,
-  floor: Math.floor,
-  ceil: Math.ceil,
-};
-
-// 保留指定小数位（支持 round / floor / ceil）
-export function roundFixed(n, options = {}) {
-  const { decimals = config.DEFAULT_DECIMALS ?? 0, method = "round" } = options;
-  const f = config.FIXED ? Math.pow(10, decimals) : 1;
-  return roundingMethods[method]?.(n * f) / f;
+/**
+ * 按指定小数位数进行舍入，返回数值。
+ * @param {number} n - 原始数字
+ * @param {number} decimals=0 - 保留的小数位数
+ * @param {number} mode=0 - 舍入方式：0=round，负数=floor，正数=ceil
+ * @returns {number} 舍入后的数值
+ */
+export function toFixedNumber(
+  n,
+  decimals = config.DEFAULT_DECIMALS ?? 0,
+  mode = 0
+) {
+  const f = decimals > 0 ? Math.pow(10, decimals) : 1;
+  const fn = mode === 0 ? Math.round : mode < 0 ? Math.floor : Math.ceil;
+  return fn(n * f) / f;
 }
 
 // 安全除法，避免除以 0

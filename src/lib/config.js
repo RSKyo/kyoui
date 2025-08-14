@@ -1,6 +1,7 @@
 export const config = {
   DEBUG:true,
-  FIXED: true,
+  FIXED_DIGITS: 3,
+
   DEFAULT_DECIMALS: 3,
   HIT_RADIUS: 10,
   PADDING_RATIO: 0.05,

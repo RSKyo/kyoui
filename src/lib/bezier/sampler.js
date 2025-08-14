@@ -1,4 +1,4 @@
-import { flattenArray, roundFixed, safeDiv } from "../utils";
+import { flattenArray, toFixedNumber, safeDiv } from "../utils";
 import { evaluateBezierPoint, getSegmentFlags } from "./core";
 
 // 构建每段的采样偏移量、数量、连接信息等元数据
@@ -22,7 +22,12 @@ function buildSamplingMeta(segs, samples) {
 
 // 对单条贝塞尔曲线进行采样，生成包含位移与归一化信息的点
 function sampleBezier(p0, p1, p2, p3, samples, options = {}) {
-  const { origin = p0, offset = 0, dedupe = 0, total = samples } = options;
+  const {
+    origin = p0,
+    offset = 0,
+    dedupe = 0,
+    total = samples,
+  } = options;
 
   return Array.from({ length: samples - dedupe }, (_, i) => {
     const progress = safeDiv(offset + i, total - 1);
@@ -32,11 +37,11 @@ function sampleBezier(p0, p1, p2, p3, samples, options = {}) {
     const dy = origin.y - y;
 
     return {
-      progress: roundFixed(progress),
-      x: roundFixed(x),
-      y: roundFixed(y),
-      dx: roundFixed(dx),
-      dy: roundFixed(dy),
+      progress: toFixedNumber(progress),
+      x: toFixedNumber(x),
+      y: toFixedNumber(y),
+      dx: toFixedNumber(dx),
+      dy: toFixedNumber(dy),
     };
   });
 }
@@ -94,7 +99,7 @@ export function sampleBezierTimedValues(segs, samples, options = {}) {
     if (valueJitterRatio) {
       jitteredValue = applyJitter(value, valueJitterRatio);
       if (minValue) jitteredValue = Math.max(minValue, jitteredValue);
-      jitteredValue = roundFixed(jitteredValue);
+      jitteredValue = toFixedNumber(jitteredValue);
     }
 
     const time = minTime + (maxTime - minTime) * safeDiv(dx, maxAbsDX);
@@ -102,7 +107,7 @@ export function sampleBezierTimedValues(segs, samples, options = {}) {
     if (timeJitterRatio) {
       jitteredTime = applyJitter(time, timeJitterRatio);
       if (minTime) jitteredTime = Math.max(minTime, jitteredTime);
-      jitteredTime = roundFixed(jitteredTime);
+      jitteredTime = toFixedNumber(jitteredTime);
     }
 
     return {
@@ -111,9 +116,9 @@ export function sampleBezierTimedValues(segs, samples, options = {}) {
       y,
       dx,
       dy,
-      time: roundFixed(time),
+      time: toFixedNumber(time),
       ...(jitteredTime ? { jitteredTime } : {}),
-      value: roundFixed(value),
+      value: toFixedNumber(value),
       ...(jitteredValue ? { jitteredValue } : {}),
     };
   });

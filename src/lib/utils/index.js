@@ -1,7 +1,7 @@
 export {flattenArray,
     flattenArrayToList,
     mapNested,
-    roundFixed,
+    toFixedNumber,
     safeDiv,
     clamp,
     generateId,

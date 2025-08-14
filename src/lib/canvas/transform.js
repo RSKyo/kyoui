@@ -1,5 +1,5 @@
 import { config } from "../config";
-import { mapNested, roundFixed, safeDiv, clamp, getBounds } from "../utils";
+import { mapNested, toFixedNumber, safeDiv, clamp, getBounds } from "../utils";
 
 // 初始化 canvas 尺寸、缩放与上下文，并计算绘图区域和边距信息
 export function initializeCanvas(canvas, options = {}) {
@@ -121,8 +121,8 @@ export function mapToCanvas(points, transform) {
 
   const project = (p) => ({
     ...p,
-    x: roundFixed((p.x - minX) * scale + drawOffset.x),
-    y: roundFixed((p.y - minY) * scale + drawOffset.y),
+    x: toFixedNumber((p.x - minX) * scale + drawOffset.x),
+    y: toFixedNumber((p.y - minY) * scale + drawOffset.y),
   });
 
   return mapNested(points, project);
@@ -136,8 +136,8 @@ export function mapFromCanvas(points, transform, options = {}) {
 
   const unproject = (p) => ({
     ...p,
-    x: roundFixed(safeDiv(p.x - drawOffset.x, scale) + minX),
-    y: roundFixed(safeDiv(p.y - drawOffset.y, scale) + minY),
+    x: toFixedNumber(safeDiv(p.x - drawOffset.x, scale) + minX),
+    y: toFixedNumber(safeDiv(p.y - drawOffset.y, scale) + minY),
   });
 
   const unprojectPoints = mapNested(points, unproject);
@@ -154,14 +154,14 @@ export function alignToOrigin(points, options = {}) {
 
   return mapNested(points, (p) => {
     if (mutate) {
-      p.x = roundFixed(p.x - bounds.minX + origin.x);
-      p.y = roundFixed(p.y - bounds.minY + origin.y);
+      p.x = toFixedNumber(p.x - bounds.minX + origin.x);
+      p.y = toFixedNumber(p.y - bounds.minY + origin.y);
       return p;
     } else {
       return {
         ...p,
-        x: roundFixed(p.x - bounds.minX + origin.x),
-        y: roundFixed(p.y - bounds.minY + origin.y),
+        x: toFixedNumber(p.x - bounds.minX + origin.x),
+        y: toFixedNumber(p.y - bounds.minY + origin.y),
       };
     }
   });
