@@ -1,11 +1,3 @@
-export {
-  isBezierSegment,
-  isBezierSegmentArray,
-  toBezierSegments,
-  evaluateBezierPoint,
-  estimateArcLength,
-  getSegmentFlags,
-  mapSegmentsToFlags,
-} from "./core";
-export { sampleBezierPoints, sampleBezierTimedValues } from "./sampler";
-export { updateBezier } from "./updater";
+export { isBezierSegment, isBezierSegmentArray, toBezierSegments, evaluateBezierPoint, estimateArcLength, getSegmentFlags, mapSegmentsToFlags } from './core.js';
+export { sampleBezierPoints, sampleBezierTimedValues } from './sampler.js';
+export { updateBezier } from './updater.js';

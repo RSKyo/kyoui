@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "gen:exports": "node scripts/generate-named-exports.js"
   },
   "dependencies": {
     "next": "15.3.4",

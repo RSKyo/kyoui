@@ -1,4 +1,4 @@
-import { flattenArray, toFixedNumber, safeDiv } from "../utils";
+import { flattenArrayGen, toFixedNumber, safeDiv } from "../utils";
 import { evaluateBezierPoint, getSegmentFlags } from "./core";
 
 // 构建每段的采样偏移量、数量、连接信息等元数据
@@ -77,7 +77,7 @@ export function sampleBezierPoints(segs, samples) {
     return segPoints;
   });
 
-  const flatPoints = [...flattenArray(points)];
+  const flatPoints = [...flattenArrayGen(points)];
   return { points: flatPoints, maxAbsDX, maxAbsDY };
 }
 

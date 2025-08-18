@@ -1,16 +1,24 @@
-export {flattenArray,
-    flattenArrayToList,
-    mapNested,
-    toFixedNumber,
-    safeDiv,
-    clamp,
-    generateId,
-    filterEntries,
-    safeClone,
-} from './common';
-export * from './dom';
-export * from './geometry';
-export * from './logger';
-export * from './points';
-export * from './store';
-export * from './timing';
+export {
+  flattenArrayGen,
+  flattenArray,
+  extractArrayGen,
+  extractArray,
+  mapNested,
+  toFixedNumber,
+  safeDiv,
+  clamp,
+  generateId,
+  filterEntries,
+  safeClone,
+} from "./common.js";
+export { whenElementReady } from "./dom.js";
+export { getBounds } from "./geometry.js";
+export { log } from "./logger.js";
+export {
+  isSamePoint,
+  mirrorPoint,
+  deepClone,
+  locateHitPoint,
+} from "./points.js";
+export { registerStore, getStore, clearStores } from "./store.js";
+export { debounceWrapper, throttleWrapper } from "./timing.js";

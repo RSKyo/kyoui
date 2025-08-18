@@ -1,8 +1,8 @@
-import { flattenArray } from "./common";
+import { flattenArrayGen } from "./common";
 
 // 计算点数组（可嵌套）的边界值和范围
 export function getBounds(points) {
-  const iter = flattenArray(points);
+  const iter = flattenArrayGen(points);
   let [minX, maxX, minY, maxY] = [Infinity, -Infinity, Infinity, -Infinity];
 
   for (const { x, y } of iter) {
