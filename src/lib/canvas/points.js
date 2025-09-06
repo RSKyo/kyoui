@@ -1,7 +1,13 @@
-
-
 import { config } from "../config";
-import { mapNested } from "./common";
+import {
+  isPrimitive,
+  isArray,
+  isPlainObject,
+  isMap,
+  isSet,
+  isDate,
+  isRegExp,
+} from "../utils/is";
 
 // 判断两个点是否近似相等（坐标差值小于容差）
 export function isSamePoint(a, b, options = {}) {
@@ -22,8 +28,31 @@ export function mirrorPoint(point, anchor) {
 }
 
 // 深度克隆
-export function deepClone(points) {
-  return mapNested(points, (p) => ({ ...p }));
+function clonePlain(value, seen = new WeakMap()) {
+  if (isPrimitive(value)) return value;
+
+  if (isArray(value)) return points.map((child) => clonePoints(child));
+  if (isPlainObject(value))
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [clonePlain(k), clonePoints(v)])
+    );
+  if (isMap(value)) {
+    return new Map([...value].map(([k, v]) => [clonePlain(k), clonePlain(v)]));
+  }
+  if (isSet(value)) {
+    return new Set([...value].map((v) => clonePlain(v)));
+  }
+  if (isDate(value)) {
+    return new Date(date.getTime());
+  }
+  if (isRegExp(value)) {
+    return new RegExp(re.source, re.flags);
+  }
+
+  return value;
+}
+export function clonePoints(points) {
+  return clonePlain(points);
 }
 
 export function locateHitPoint(points, x, y, options = {}) {
@@ -44,5 +73,3 @@ export function locateHitPoint(points, x, y, options = {}) {
 
   return null;
 }
-
-

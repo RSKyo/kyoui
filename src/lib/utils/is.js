@@ -22,6 +22,7 @@ export const TYPE_ENUM = {
   PROMISE: "promise",
   ELEMENT: "element",
   NODE: "node",
+  PRIMITIVE: "primitive",
 };
 
 // 原始类型判断
@@ -76,43 +77,5 @@ export const isElement = (val) =>
 export const isNode = (val) =>
   typeof Node !== TYPE_ENUM.UNDEFINED && val instanceof Node;
 
-/**
- * 判断一个值是否是指定类型。
- * 支持的类型有：
- * "null", "undefined", "number", "nan", "boolean", "string",
- * "symbol", "big-int", "function", "array", "object", "plain-object",
- * "date", "reg-exp", "map", "set", "weak-map", "weak-set",
- * "error", "promise", "element", "node" 等。
- *
- * @param {*} value - 要判断的值
- * @param {string} type - 类型字符串
- * @returns {boolean}
- */
-export function isType(value, type) {
-  switch (type) {
-    case TYPE_ENUM.NULL: return isNull(value);
-    case TYPE_ENUM.UNDEFINED: return isUndefined(value);
-    case TYPE_ENUM.NUMBER: return isNumber(value);
-    case TYPE_ENUM.NAN: return isNaNValue(value);
-    case TYPE_ENUM.BOOLEAN: return isBoolean(value);
-    case TYPE_ENUM.STRING: return isString(value);
-    case TYPE_ENUM.SYMBOL: return isSymbol(value);
-    case TYPE_ENUM.BIGINT: return isBigInt(value);
-    case TYPE_ENUM.FUNCTION: return isFunction(value);
-    case TYPE_ENUM.ARRAY: return isArray(value);
-    case TYPE_ENUM.OBJECT: return isObject(value);
-    case TYPE_ENUM.PLAIN_OBJECT: return isPlainObject(value);
-    case TYPE_ENUM.DATE: return isDate(value);
-    case TYPE_ENUM.REG_EXP: return isRegExp(value);
-    case TYPE_ENUM.MAP: return isMap(value);
-    case TYPE_ENUM.SET: return isSet(value);
-    case TYPE_ENUM.WEAK_MAP: return isWeakMap(value);
-    case TYPE_ENUM.WEAK_SET: return isWeakSet(value);
-    case TYPE_ENUM.ERROR: return isError(value);
-    case TYPE_ENUM.PROMISE: return isPromise(value);
-    case TYPE_ENUM.ELEMENT: return isElement(value);
-    case TYPE_ENUM.NODE: return isNode(value);
-    default:
-      return false; // 若不识别，直接返回 false 更稳妥
-  }
-}
+export const isPrimitive = (val) => 
+  typeof val !== TYPE_ENUM.OBJECT && typeof val !== TYPE_ENUM.FUNCTION;

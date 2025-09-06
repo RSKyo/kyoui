@@ -1,5 +1,24 @@
 import { config } from "../config";
-import { mapNested, toFixedNumber, safeDiv, clamp, getBounds } from "../utils";
+import { flattenArrayGen, mapNested, toFixedNumber, safeDiv, clamp } from "../utils";
+
+
+// 计算点数组（可嵌套）的边界值和范围
+export function getBounds(points) {
+  const iter = flattenArrayGen(points);
+  let [minX, maxX, minY, maxY] = [Infinity, -Infinity, Infinity, -Infinity];
+
+  for (const { x, y } of iter) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+
+  return { minX, maxX, minY, maxY, rangeX, rangeY };
+}
 
 // 初始化 canvas 尺寸、缩放与上下文，并计算绘图区域和边距信息
 export function initializeCanvas(canvas, options = {}) {

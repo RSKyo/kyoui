@@ -1,24 +1,11 @@
-export {
-  flattenArrayGen,
-  flattenArray,
-  extractArrayGen,
-  extractArray,
-  mapNested,
-  toFixedNumber,
-  safeDiv,
-  clamp,
-  generateId,
-  filterEntries,
-  safeClone,
-} from "./common.js";
-export { whenElementReady } from "./dom.js";
-export { getBounds } from "./geometry.js";
-export { log } from "./logger.js";
-export {
-  isSamePoint,
-  mirrorPoint,
-  deepClone,
-  locateHitPoint,
-} from "./points.js";
-export { registerStore, getStore, clearStores } from "./store.js";
-export { debounceWrapper, throttleWrapper } from "./timing.js";
+export { flattenArrayGen, flattenArray, extractArrayGen, extractArray, mapNested } from './array.js';
+export { safeClone } from './clone.js';
+export { whenElementReady } from './dom.js';
+export { generateId } from './id.js';
+export { TYPE_ENUM, isNull, isUndefined, isNumber, isNaNValue, isBoolean, isString, isSymbol, isBigInt, isFunction, isArray, isObject, isPlainObject, isDate, isRegExp, isMap, isSet, isWeakMap, isWeakSet, isError, isPromise, isElement, isNode, isType } from './is.js';
+export { log } from './logger.js';
+export { safeDiv, clamp, toFixedNumber } from './math.js';
+export { filterEntries } from './object.js';
+export { isSamePoint, mirrorPoint, deepClone, locateHitPoint } from './points.js';
+export { registerStore, getStore, clearStores } from './store.js';
+export { debounceWrapper, throttleWrapper } from './timing.js';
