@@ -1,21 +1,46 @@
-import {
-  isArray,
-  isPlainObject,
-  isString,
-  isSymbol,
-  isFunction,
-} from "../utils/is";
-import { log } from "../utils/logger.js";
+import { isString, isSymbol, isFunction } from "../utils/is";
 
-export const MAP_OBJECT_SKIP = Symbol.for("utils.mapObject.SKIP");
+/**
+ * 特殊标记，用于在 mapObject 的回调中表示“跳过该属性”。
+ * @example
+ * mapObject({ a:1, b:2 }, (k,v) => v % 2 ? [k,v] : MAP_OBJECT_SKIP)
+ */
+export const MAP_OBJECT_SKIP = Symbol("utils.mapObject.SKIP");
 
+/**
+ * 安全地为对象设置属性，避免 "__proto__" 被当作原型污染。
+ * - 对于 "__proto__"：使用 defineProperty 强制写入为数据属性。
+ * - 对于其他键：直接赋值。
+ * @param {Object} obj - 目标对象
+ * @param {string|symbol} k - 属性键
+ * @param {*} v - 属性值
+ */
+export function fastSet(obj, k, v) {
+  if (k === "__proto__") {
+    Object.defineProperty(obj, k, {
+      value: v,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+  } else {
+    obj[k] = v;
+  }
+}
+
+/**
+ * 获取对象属性的完整元信息（descriptor + 各种布尔标记）。
+ * @param {Object} obj - 目标对象
+ * @param {string|symbol} k - 属性键
+ * @returns {Object|null} 元信息对象，若属性不存在返回 null
+ */
 export function getPropMeta(obj, k) {
   const desc = Object.getOwnPropertyDescriptor(obj, k);
   if (!desc) return null;
 
   const isStringKey = isString(k);
   const isSymbolKey = isSymbol(k);
-  const isProtoKey = isStringKey && k === "__proto__";
+  const isProtoKey = k === "__proto__";
 
   const isAccessorProperty = "get" in desc || "set" in desc;
   const isDataProperty = !isAccessorProperty; // 互斥
@@ -40,6 +65,17 @@ export function getPropMeta(obj, k) {
   };
 }
 
+/**
+ * 安全地在对象上定义/更新属性。
+ * - 自动处理 __proto__ 特殊情况，防止原型污染。
+ * - 会保留或更新 enumerable/writable/configurable 标记。
+ * - 根据属性是否是数据属性或访问器属性，执行不同的逻辑。
+ * @param {Object} obj - 目标对象
+ * @param {string|symbol} k - 属性键
+ * @param {*} v - 属性值
+ * @param {Object} [options] - 可选 flags（writable, enumerable, configurable）
+ * @returns {Object} 原对象（便于链式调用）
+ */
 export function safeDefine(obj, k, v, options = {}) {
   const meta = getPropMeta(obj, k);
   const exten = Object.isExtensible(obj);
@@ -90,10 +126,8 @@ export function safeDefine(obj, k, v, options = {}) {
         if (writableChanged) patch.writable = options.writable;
       }
 
-      if (enumerableChanged)
-        patch.enumerable = options.enumerable ?? meta.enumerable;
-      if (configurableChanged)
-        patch.configurable = options.configurable ?? meta.configurable;
+      patch.enumerable = options.enumerable ?? meta.enumerable;
+      patch.configurable = options.configurable ?? meta.configurable;
 
       define(obj, k, patch);
     } else {
@@ -153,53 +187,68 @@ export function safeDefine(obj, k, v, options = {}) {
 }
 
 /**
- * 根据条件筛选对象中的键值对。
+ * 过滤对象的自有可枚举字符串属性。
+ * - 会读取属性值，可能触发 getter。
+ * - 返回一个新对象（不会修改原对象）。
  * @param {Object} obj - 输入对象
- * @param {(k: string, value: any) => boolean} fn - 判断是否保留的函数
- * @returns {Object} 新对象，仅包含满足条件的键值对
+ * @param {(key:string, value:any)=>boolean} fn - 判断函数，返回 true 保留该属性
+ * @returns {Object} 过滤后的新对象
  */
-export function filterEntries(obj, fn) {
+export function filterObject(obj, fn) {
   return Object.fromEntries(Object.entries(obj).filter(([k, v]) => fn(k, v)));
 }
 
-// 获取对象的自有可枚举键
-export function enumKeys(obj, { includeSymbols = false } = {}) {
-  return includeSymbols
-    ? Reflect.ownKeys(obj).filter((k) =>
-        Object.prototype.propertyIsEnumerable.call(obj, k)
-      )
-    : Object.keys(obj);
-}
+/**
+ * 遍历对象的自有可枚举字符串属性，对每个属性执行回调。
+ * - 回调可以返回 [newKey, newValue] 来修改键/值；
+ * - 或返回 MAP_OBJECT_SKIP 来跳过该属性；
+ * - 否则默认保留原键值。
+ * - 返回的新对象不会修改原对象。
+ * @param {Object} obj - 输入对象
+ * @param {(key:string, value:any)=>[string|symbol, any]|typeof MAP_OBJECT_SKIP|any[]} fn - 映射函数
+ * @returns {Object} 新对象
+ * @example
+ * mapObject({ a:1, b:2 }, (k,v) => [k+k, v*10]) // { aa:10, bb:20 }
+ * mapObject({ a:1, b:2 }, (k,v) => MAP_OBJECT_SKIP) // {}
+ */
+export function mapObject(obj, fn) {
+  const out = {};
+  const keys = Object.keys(obj);
 
-export function mapPlainObject(obj, fn, { includeSymbols = false } = {}) {
-  if (!isPlainObject(obj)) return obj;
-
-  const keys = enumKeys(obj, { includeSymbols });
-
-  const pairs = [];
   for (const k of keys) {
     const v = obj[k];
     const res = fn(k, v);
     if (res === MAP_OBJECT_SKIP) continue;
 
-    if (
-      isArray(res) &&
+    const [nk, nv] =
+      Array.isArray(res) &&
       res.length === 2 &&
       (isString(res[0]) || isSymbol(res[0]))
-    ) {
-      pairs.push(res);
-    } else {
-      pairs.push([k, v]);
-    }
+        ? res
+        : [k, v];
+
+    fastSet(out, nk, nv);
   }
 
-  // 用 null 原型，赋值最简单也最安全（'__proto__' 只会当普通键）
-  const out = Object.create(null);
-  for ([k, v] in pairs) {
-    out[k] = v;
+  return out;
+}
+
+/**
+ * 遍历对象的自有可枚举字符串属性，仅对值做映射（key 保持不变）。
+ * - 返回的新对象不会修改原对象。
+ * @param {Object} obj - 输入对象
+ * @param {(value:any, key:string)=>any} fn - 映射函数
+ * @returns {Object} 新对象
+ * @example
+ * mapValues({ a:1, b:2 }, v => v*2) // { a:2, b:4 }
+ */
+export function mapValues(obj, fn) {
+  const out = {};
+  for (const k of Object.keys(obj)) {
+    fastSet(out, k, fn(obj[k], k));
   }
   return out;
 }
 
-// 可选：同时挂到函数上，便于 mapObject.SKIP 写法
-mapPlainObject.SKIP = MAP_OBJECT_SKIP;
+// 同时挂到函数上，支持 mapObject.SKIP 写法
+mapObject.SKIP = MAP_OBJECT_SKIP;
